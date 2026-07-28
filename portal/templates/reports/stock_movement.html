@@ -9,14 +9,7 @@
 </div>
 <div class="card-panel">
   <form method="get" class="row g-2 align-items-end mb-3">
-    <div class="col-auto">
-      <label class="form-label form-label-sm mb-0">From</label>
-      <input type="date" name="date_from" class="form-control form-control-sm" value="{{ date_from }}">
-    </div>
-    <div class="col-auto">
-      <label class="form-label form-label-sm mb-0">To</label>
-      <input type="date" name="date_to" class="form-control form-control-sm" value="{{ date_to }}">
-    </div>
+    {% include "includes/period_fields.html" %}
     <div class="col-auto">
       <label class="form-label form-label-sm mb-0">Customer</label>
       <select name="customer" class="form-select form-select-sm">
@@ -43,7 +36,7 @@
       </select>
     </div>
     <div class="col-auto">
-      <button class="btn btn-sm btn-outline-dark" type="submit">Run report</button>
+      <button class="btn btn-sm btn-outline-dark" type="submit">Apply</button>
     </div>
   </form>
 

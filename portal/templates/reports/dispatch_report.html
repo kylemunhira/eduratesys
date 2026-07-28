@@ -3,14 +3,20 @@
 {% block content %}
 <div class="topbar"><h1 class="page-title">Dispatch report</h1></div>
 <div class="card-panel">
-  <form method="get" class="mb-3">
-    <select name="status" class="form-select form-select-sm w-auto d-inline-block">
-      <option value="">All statuses</option>
-      <option value="draft" {% if status == "draft" %}selected{% endif %}>Draft</option>
-      <option value="approved" {% if status == "approved" %}selected{% endif %}>Approved</option>
-      <option value="cancelled" {% if status == "cancelled" %}selected{% endif %}>Cancelled</option>
-    </select>
-    <button class="btn btn-sm btn-outline-dark" type="submit">Filter</button>
+  <form method="get" class="row g-2 align-items-end mb-3">
+    {% include "includes/period_fields.html" %}
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-0">Status</label>
+      <select name="status" class="form-select form-select-sm">
+        <option value="">All statuses</option>
+        <option value="draft" {% if status == "draft" %}selected{% endif %}>Draft</option>
+        <option value="approved" {% if status == "approved" %}selected{% endif %}>Approved</option>
+        <option value="cancelled" {% if status == "cancelled" %}selected{% endif %}>Cancelled</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-sm btn-outline-dark" type="submit">Apply</button>
+    </div>
   </form>
   <table class="table table-sm mb-0">
     <thead><tr><th>Ref</th><th>Customer</th><th>Branch</th><th>Status</th><th>Items</th></tr></thead>
@@ -26,7 +32,7 @@
         </td>
       </tr>
     {% empty %}
-      <tr><td colspan="5" class="text-muted">No dispatches.</td></tr>
+      <tr><td colspan="5" class="text-muted">No dispatches for this period.</td></tr>
     {% endfor %}
     </tbody>
   </table>

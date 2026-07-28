@@ -7,8 +7,7 @@ from .models import Sale, SaleItem, SyncLog, ingest_sale
 
 
 class SaleItemSerializer(serializers.Serializer):
-    product_code = serializers.CharField(required=False, allow_blank=True, default="")
-    barcode = serializers.CharField(required=False, allow_blank=True, default="")
+    barcode = serializers.CharField()
     quantity = serializers.IntegerField(min_value=1)
     unit_price = serializers.DecimalField(
         max_digits=12, decimal_places=2, required=False
@@ -26,11 +25,6 @@ class SaleIngestSerializer(serializers.Serializer):
     def validate_items(self, value):
         if not value:
             raise serializers.ValidationError("At least one item is required.")
-        for item in value:
-            if not (item.get("product_code") or item.get("barcode")):
-                raise serializers.ValidationError(
-                    "Each item needs product_code or barcode."
-                )
         return value
 
 

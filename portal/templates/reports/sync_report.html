@@ -3,6 +3,12 @@
 {% block content %}
 <div class="topbar"><h1 class="page-title">Synchronization report</h1></div>
 <div class="card-panel">
+  <form method="get" class="row g-2 align-items-end mb-3">
+    {% include "includes/period_fields.html" %}
+    <div class="col-auto">
+      <button class="btn btn-sm btn-outline-dark" type="submit">Apply</button>
+    </div>
+  </form>
   <h2 class="h6">Branches</h2>
   <table class="table table-sm">
     <thead><tr><th>Customer</th><th>Branch</th><th>Last sync</th><th>Online</th></tr></thead>
@@ -30,7 +36,7 @@
         <td>{{ l.message }}</td>
       </tr>
     {% empty %}
-      <tr><td colspan="5" class="text-muted">No logs.</td></tr>
+      <tr><td colspan="5" class="text-muted">No logs for this period.</td></tr>
     {% endfor %}
     </tbody>
   </table>

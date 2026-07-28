@@ -1,15 +1,22 @@
 from collections import defaultdict
-from datetime import datetime, time, timedelta
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum
 from django.shortcuts import render
-from django.utils import timezone
-from django.utils.dateparse import parse_date
 
 from catalog.models import Branch, Customer, Product
 from inventory.models import BranchStock, Dispatch, DispatchItem, StockLoss
+from reports.period import parse_period_bounds
 from sales.models import Sale, SaleItem, SyncLog
+
+
+def _period_context(bounds):
+    return {
+        "period": bounds["period"],
+        "date_from": bounds["date_from_iso"],
+        "date_to": bounds["date_to_iso"],
+        "period_label": bounds["period_label"],
+    }
 
 
 @login_required
@@ -22,8 +29,11 @@ def stock_balance(request):
 
 @login_required
 def dispatch_report(request):
-    dispatches = Dispatch.objects.select_related("customer", "branch").prefetch_related(
-        "items__product"
+    bounds = parse_period_bounds(request)
+    dispatches = (
+        Dispatch.objects.select_related("customer", "branch")
+        .prefetch_related("items__product")
+        .filter(created_at__gte=bounds["start_dt"], created_at__lt=bounds["end_dt"])
     )
     status = request.GET.get("status")
     if status:
@@ -31,16 +41,30 @@ def dispatch_report(request):
     return render(
         request,
         "reports/dispatch_report.html",
-        {"dispatches": dispatches, "status": status},
+        {
+            "dispatches": dispatches,
+            "status": status,
+            **_period_context(bounds),
+        },
     )
 
 
 @login_required
 def sales_report(request):
-    sales = Sale.objects.select_related("branch", "branch__customer").prefetch_related(
-        "items__product"
+    bounds = parse_period_bounds(request)
+    sales = (
+        Sale.objects.select_related("branch", "branch__customer")
+        .prefetch_related("items__product")
+        .filter(sold_at__gte=bounds["start_dt"], sold_at__lt=bounds["end_dt"])
     )
-    return render(request, "reports/sales_report.html", {"sales": sales})
+    return render(
+        request,
+        "reports/sales_report.html",
+        {
+            "sales": sales,
+            **_period_context(bounds),
+        },
+    )
 
 
 @login_required
@@ -57,32 +81,20 @@ def customer_stock_summary(request):
 
 @login_required
 def sync_report(request):
+    bounds = parse_period_bounds(request)
     branches = Branch.objects.select_related("customer")
-    logs = SyncLog.objects.select_related("branch")[:100]
+    logs = SyncLog.objects.select_related("branch").filter(
+        created_at__gte=bounds["start_dt"], created_at__lt=bounds["end_dt"]
+    )[:100]
     return render(
         request,
         "reports/sync_report.html",
-        {"branches": branches, "logs": logs},
+        {
+            "branches": branches,
+            "logs": logs,
+            **_period_context(bounds),
+        },
     )
-
-
-def _parse_report_bounds(request):
-    """Return (date_from, date_to, start_dt, end_dt) for the selected period."""
-    today = timezone.localdate()
-    raw_from = request.GET.get("date_from") or ""
-    raw_to = request.GET.get("date_to") or ""
-    date_from = parse_date(raw_from) or today.replace(day=1)
-    date_to = parse_date(raw_to) or today
-    if date_from > date_to:
-        date_from, date_to = date_to, date_from
-
-    tz = timezone.get_current_timezone()
-    start_dt = timezone.make_aware(datetime.combine(date_from, time.min), tz)
-    # Inclusive end-of-day: use start of next day as exclusive upper bound.
-    end_exclusive = timezone.make_aware(
-        datetime.combine(date_to + timedelta(days=1), time.min), tz
-    )
-    return date_from, date_to, start_dt, end_exclusive
 
 
 @login_required
@@ -93,7 +105,9 @@ def stock_movement(request):
     Opening = approved dispatches − sales − losses (before period)
     Closing = opening + dispatched − sold − shrinkage/damaged (in period)
     """
-    date_from, date_to, start_dt, end_dt = _parse_report_bounds(request)
+    bounds = parse_period_bounds(request)
+    start_dt = bounds["start_dt"]
+    end_dt = bounds["end_dt"]
     group_by = request.GET.get("group_by") or "branch"
     if group_by not in ("branch", "customer"):
         group_by = "branch"
@@ -250,11 +264,10 @@ def stock_movement(request):
         {
             "rows": rows,
             "group_by": group_by,
-            "date_from": date_from.isoformat(),
-            "date_to": date_to.isoformat(),
             "customers": customers,
             "branches": branches,
             "selected_customer": customer_id,
             "selected_branch": branch_id,
+            **_period_context(bounds),
         },
     )

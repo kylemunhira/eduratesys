@@ -3,8 +3,14 @@
 {% block content %}
 <div class="topbar"><h1 class="page-title">Sales report</h1></div>
 <div class="card-panel">
+  <form method="get" class="row g-2 align-items-end mb-3">
+    {% include "includes/period_fields.html" %}
+    <div class="col-auto">
+      <button class="btn btn-sm btn-outline-dark" type="submit">Apply</button>
+    </div>
+  </form>
   <table class="table table-sm mb-0">
-    <thead><tr><th>External ID</th><th>Customer</th><th>Branch</th><th>Sold at</th><th>Total</th></tr></thead>
+    <thead><tr><th>External ID</th><th>Customer</th><th>Branch</th><th>Sold at</th><th>Items sold</th><th>Total</th></tr></thead>
     <tbody>
     {% for s in sales %}
       <tr>
@@ -12,10 +18,17 @@
         <td>{{ s.branch.customer.name }}</td>
         <td>{{ s.branch.name }}</td>
         <td>{{ s.sold_at }}</td>
+        <td class="small">
+          {% for i in s.items.all %}
+            {{ i.product.name }} <span class="mono text-muted">({{ i.product.code }})</span> ×{{ i.quantity }} @ {{ i.unit_price }}{% if not forloop.last %}<br>{% endif %}
+          {% empty %}
+            <span class="text-muted">No matched products</span>
+          {% endfor %}
+        </td>
         <td>{{ s.total_amount }}</td>
       </tr>
     {% empty %}
-      <tr><td colspan="5" class="text-muted">No sales synced yet.</td></tr>
+      <tr><td colspan="6" class="text-muted">No sales for this period.</td></tr>
     {% endfor %}
     </tbody>
   </table>

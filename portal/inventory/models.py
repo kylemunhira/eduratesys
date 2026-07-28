@@ -34,6 +34,81 @@ def adjust_stock(branch: Branch, product: Product, delta: int) -> BranchStock:
     return stock
 
 
+def set_stock(branch: Branch, product: Product, quantity: int) -> BranchStock:
+    """Set absolute on-hand quantity (e.g. POS remaining qty sync)."""
+    stock, _ = BranchStock.objects.select_for_update().get_or_create(
+        branch=branch, product=product, defaults={"quantity": quantity}
+    )
+    if stock.quantity != quantity:
+        stock.quantity = quantity
+        stock.save(update_fields=["quantity", "updated_at"])
+    return stock
+
+
+@transaction.atomic
+def ingest_stock_snapshot(*, branch: Branch, items: list[dict]) -> dict:
+    """
+    Apply POS remaining quantities to branch stock.
+    Each item: {barcode, quantity}. Matched by product barcode only.
+    """
+    from sales.models import SyncLog
+
+    updated = []
+    skipped = []
+    for line in items:
+        barcode = (line.get("barcode") or "").strip()
+        if not barcode:
+            skipped.append({"reason": "missing_barcode", "line": line})
+            continue
+        try:
+            qty = int(line.get("quantity"))
+        except (TypeError, ValueError):
+            skipped.append({"barcode": barcode, "reason": "invalid_quantity"})
+            continue
+        if qty < 0:
+            skipped.append({"barcode": barcode, "reason": "negative_quantity"})
+            continue
+        product = Product.objects.filter(
+            barcode=barcode, status=Product.Status.ACTIVE
+        ).first()
+        if not product:
+            skipped.append({"barcode": barcode, "reason": "no_portal_match"})
+            continue
+        stock = set_stock(branch, product, qty)
+        updated.append(
+            {
+                "barcode": barcode,
+                "product_code": product.code,
+                "quantity": stock.quantity,
+            }
+        )
+
+    branch.mark_synced()
+    SyncLog.objects.create(
+        branch=branch,
+        status=SyncLog.Status.SUCCESS,
+        message=(
+            f"Stock snapshot: {len(updated)} updated, {len(skipped)} skipped"
+        ),
+        external_sale_id="",
+        payload_meta={
+            "kind": "stock_snapshot",
+            "updated_count": len(updated),
+            "skipped_count": len(skipped),
+            "updated": updated,
+            "skipped": skipped,
+        },
+    )
+    if updated:
+        log_audit(
+            action="sync",
+            entity="BranchStock",
+            entity_id=branch.pk,
+            details=f"POS stock snapshot for {branch}: {len(updated)} products",
+        )
+    return {"updated": updated, "skipped": skipped}
+
+
 class Dispatch(models.Model):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"

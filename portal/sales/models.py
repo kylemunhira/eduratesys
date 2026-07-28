@@ -1,11 +1,10 @@
 from django.db import models, transaction
+from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
+import json
 
 from accounts.models import log_audit
 from catalog.models import Branch, Product
-from inventory.models import adjust_stock
-
-
 class Sale(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name="sales")
     external_sale_id = models.CharField(max_length=100)
@@ -54,6 +53,10 @@ class SyncLog(models.Model):
         return f"{self.branch} {self.status} @ {self.created_at}"
 
 
+def _json_safe(data: dict) -> dict:
+    return json.loads(json.dumps(data, cls=DjangoJSONEncoder))
+
+
 @transaction.atomic
 def ingest_sale(*, branch: Branch, data: dict) -> tuple[Sale | None, SyncLog, bool]:
     """
@@ -96,34 +99,22 @@ def ingest_sale(*, branch: Branch, data: dict) -> tuple[Sale | None, SyncLog, bo
         return None, log, False
 
     resolved = []
+    skipped = []
     for line in items:
-        code = (line.get("product_code") or "").strip()
         barcode = (line.get("barcode") or "").strip()
+        if not barcode:
+            skipped.append({"reason": "missing_barcode", "line": line})
+            continue
         qty = int(line.get("quantity") or 0)
         if qty <= 0:
-            log = SyncLog.objects.create(
-                branch=branch,
-                status=SyncLog.Status.FAILED,
-                message=f"Invalid quantity for product {code or barcode}",
-                external_sale_id=external_sale_id,
-            )
-            return None, log, False
-        product = None
-        if code:
-            product = Product.objects.filter(code__iexact=code, status=Product.Status.ACTIVE).first()
-        if not product and barcode:
-            product = Product.objects.filter(
-                barcode=barcode, status=Product.Status.ACTIVE
-            ).first()
+            skipped.append({"barcode": barcode, "reason": "invalid_quantity"})
+            continue
+        product = Product.objects.filter(
+            barcode=barcode, status=Product.Status.ACTIVE
+        ).first()
         if not product:
-            log = SyncLog.objects.create(
-                branch=branch,
-                status=SyncLog.Status.FAILED,
-                message=f"Unknown product code/barcode: {code or barcode}",
-                external_sale_id=external_sale_id,
-                payload_meta={"line": line},
-            )
-            return None, log, False
+            skipped.append({"barcode": barcode, "reason": "no_portal_match"})
+            continue
         resolved.append(
             (
                 product,
@@ -138,31 +129,42 @@ def ingest_sale(*, branch: Branch, data: dict) -> tuple[Sale | None, SyncLog, bo
         external_sale_id=external_sale_id,
         sold_at=sold_at,
         total_amount=data.get("total_amount") or 0,
-        raw_payload=data,
+        raw_payload=_json_safe(data),
     )
     total = 0
     for product, qty, unit_price in resolved:
         SaleItem.objects.create(
             sale=sale, product=product, quantity=qty, unit_price=unit_price
         )
-        adjust_stock(branch, product, -qty)
+        # Branch on-hand comes from POS remaining-qty stock snapshots, not sale deltas.
         total += float(unit_price) * qty
     if not data.get("total_amount"):
         sale.total_amount = total
         sale.save(update_fields=["total_amount"])
 
     branch.mark_synced()
+    if resolved:
+        message = "Sale ingested"
+        if skipped:
+            message = f"Sale ingested ({len(resolved)} items; {len(skipped)} skipped)"
+    else:
+        message = "No portal barcode matches; stock not updated"
     log = SyncLog.objects.create(
         branch=branch,
         status=SyncLog.Status.SUCCESS,
-        message="Sale ingested",
+        message=message,
         external_sale_id=external_sale_id,
-        payload_meta={"item_count": len(resolved)},
+        payload_meta={
+            "item_count": len(resolved),
+            "skipped_count": len(skipped),
+            "skipped": skipped,
+        },
     )
-    log_audit(
-        action="ingest",
-        entity="Sale",
-        entity_id=sale.pk,
-        details=f"Synced {external_sale_id} from {branch}",
-    )
-    return sale, log, True
+    if resolved:
+        log_audit(
+            action="ingest",
+            entity="Sale",
+            entity_id=sale.pk,
+            details=f"Synced {external_sale_id} from {branch}",
+        )
+    return sale, log, bool(resolved)

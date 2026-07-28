@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ssms
+      POSTGRES_PASSWORD: ssms
+      POSTGRES_DB: ssms
+    ports:
+      - "5433:5432"
+    volumes:
+      - eduratesys_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ssms -d ssms"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  eduratesys_pgdata:

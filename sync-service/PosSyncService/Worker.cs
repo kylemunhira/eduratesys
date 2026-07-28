@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 
@@ -8,6 +9,12 @@ namespace PosSyncService;
 
 public sealed class Worker : BackgroundService
 {
+    private static readonly JsonSerializerOptions SaleJsonOptions = new()
+    {
+        PropertyNamingPolicy = null,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
     private readonly ILogger<Worker> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly SyncOptions _options;
@@ -27,8 +34,9 @@ public sealed class Worker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation(
-            "SSMS POS sync started. DemoMode={Demo} Interval={Interval}s Api={Api}",
+            "SSMS POS sync started. DemoMode={Demo} SyncStock={Stock} Interval={Interval}s Api={Api}",
             _options.UseDemoMode,
+            _options.SyncStock,
             _options.PollIntervalSeconds,
             _options.ApiBaseUrl);
 
@@ -50,6 +58,15 @@ public sealed class Worker : BackgroundService
 
     private async Task SyncOnceAsync(CancellationToken ct)
     {
+        await SyncSalesAsync(ct);
+        if (_options.SyncStock)
+        {
+            await SyncStockAsync(ct);
+        }
+    }
+
+    private async Task SyncSalesAsync(CancellationToken ct)
+    {
         var state = await LoadStateAsync(ct);
         var rows = _options.UseDemoMode
             ? BuildDemoRows(state)
@@ -63,20 +80,33 @@ public sealed class Worker : BackgroundService
 
         foreach (var group in rows.GroupBy(r => r.ExternalSaleId))
         {
+            var barcodeRows = group
+                .Where(r => !string.IsNullOrWhiteSpace(r.Barcode))
+                .ToList();
+            if (barcodeRows.Count == 0)
+            {
+                _logger.LogInformation(
+                    "Skipping sale {SaleId}: no lines with barcode",
+                    group.Key);
+                state.Watermark = group.Key;
+                state.LastSuccessUtc = DateTime.UtcNow;
+                await SaveStateAsync(state, ct);
+                continue;
+            }
+
             var payload = new
             {
                 external_sale_id = group.Key,
-                sold_at = group.First().SoldAt,
-                items = group.Select(g => new
+                sold_at = barcodeRows[0].SoldAt,
+                items = barcodeRows.Select(g => new
                 {
-                    product_code = g.ProductCode,
                     barcode = g.Barcode,
                     quantity = g.Quantity,
                     unit_price = g.UnitPrice
                 }).ToList()
             };
 
-            var ok = await PostSaleAsync(payload, ct);
+            var ok = await PostJsonAsync("api/sales/", payload, ct);
             if (!ok)
             {
                 await AppendRetryAsync($"Failed upload for {group.Key}");
@@ -90,6 +120,35 @@ public sealed class Worker : BackgroundService
         }
     }
 
+    private async Task SyncStockAsync(CancellationToken ct)
+    {
+        var rows = _options.UseDemoMode
+            ? BuildDemoStockRows()
+            : await QueryStockAsync(ct);
+
+        var items = rows
+            .Where(r => !string.IsNullOrWhiteSpace(r.Barcode))
+            .GroupBy(r => r.Barcode.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => new { barcode = g.Key, quantity = g.Sum(x => x.Quantity) })
+            .ToList();
+
+        if (items.Count == 0)
+        {
+            _logger.LogDebug("No POS stock rows with barcode.");
+            return;
+        }
+
+        var payload = new { items };
+        var ok = await PostJsonAsync("api/stock/", payload, ct);
+        if (!ok)
+        {
+            await AppendRetryAsync("Failed stock snapshot upload");
+            return;
+        }
+
+        _logger.LogInformation("Synced stock snapshot ({Count} barcodes)", items.Count);
+    }
+
     private List<SaleRow> BuildDemoRows(SyncState state)
     {
         // Emits one demo sale per process lifetime after watermark advances past DEMO-0.
@@ -101,18 +160,24 @@ public sealed class Worker : BackgroundService
         var id = $"DEMO-{DateTime.UtcNow:yyyyMMddHHmmss}";
         return
         [
-            new SaleRow(id, DateTime.UtcNow, "MILK-1L", "6001001", 1, 2.50m),
-            new SaleRow(id, DateTime.UtcNow, "BREAD-LOAF", "6001002", 1, 1.20m)
+            new SaleRow(id, DateTime.UtcNow, "8880029570102", "8880029570102", 1, 16.50m),
+            new SaleRow(id, DateTime.UtcNow, "8880029560103", "8880029560103", 1, 17.00m)
         ];
     }
 
+    private static List<StockRow> BuildDemoStockRows() =>
+    [
+        new StockRow("8880029570102", 48),
+        new StockRow("8880029560103", 35),
+        new StockRow("8880029550104", 22),
+        new StockRow("8880029390106", 12),
+        new StockRow("8880029380107", 40),
+        new StockRow("8880029370108", 18)
+    ];
+
     private async Task<List<SaleRow>> QueryPosAsync(string watermark, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(_options.SqlConnectionString))
-        {
-            throw new InvalidOperationException(
-                "SqlConnectionString is empty. Set Sync:UseDemoMode=true or provide a SQL Server connection string.");
-        }
+        EnsureSqlConfigured();
 
         var rows = new List<SaleRow>();
         await using var conn = new SqlConnection(_options.SqlConnectionString);
@@ -135,7 +200,36 @@ public sealed class Worker : BackgroundService
         return rows;
     }
 
-    private async Task<bool> PostSaleAsync(object payload, CancellationToken ct)
+    private async Task<List<StockRow>> QueryStockAsync(CancellationToken ct)
+    {
+        EnsureSqlConfigured();
+
+        var rows = new List<StockRow>();
+        await using var conn = new SqlConnection(_options.SqlConnectionString);
+        await conn.OpenAsync(ct);
+        await using var cmd = new SqlCommand(_options.StockQuery, conn);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            rows.Add(new StockRow(
+                reader["Barcode"]?.ToString() ?? "",
+                Convert.ToInt32(reader["Quantity"])
+            ));
+        }
+
+        return rows;
+    }
+
+    private void EnsureSqlConfigured()
+    {
+        if (string.IsNullOrWhiteSpace(_options.SqlConnectionString))
+        {
+            throw new InvalidOperationException(
+                "SqlConnectionString is empty. Set Sync:UseDemoMode=true or provide a SQL Server connection string.");
+        }
+    }
+
+    private async Task<bool> PostJsonAsync(string relativeUrl, object payload, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_options.ApiKey))
         {
@@ -149,15 +243,17 @@ public sealed class Worker : BackgroundService
         client.DefaultRequestHeaders.Add("X-API-Key", _options.ApiKey);
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-        using var response = await client.PostAsJsonAsync("api/sales/", payload, ct);
+        var json = JsonSerializer.Serialize(payload, SaleJsonOptions);
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        using var response = await client.PostAsync(relativeUrl, content, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         if (response.IsSuccessStatusCode)
         {
-            _logger.LogDebug("API response: {Body}", body);
+            _logger.LogDebug("API {Url} response: {Body}", relativeUrl, body);
             return true;
         }
 
-        _logger.LogError("API {Status}: {Body}", (int)response.StatusCode, body);
+        _logger.LogError("API {Url} {Status}: {Body}", relativeUrl, (int)response.StatusCode, body);
         return false;
     }
 
@@ -169,8 +265,23 @@ public sealed class Worker : BackgroundService
         }
 
         await using var stream = File.OpenRead(_statePath);
-        var state = await JsonSerializer.DeserializeAsync<SyncState>(stream, cancellationToken: ct);
-        return state ?? new SyncState();
+        var state = await JsonSerializer.DeserializeAsync<SyncState>(stream, cancellationToken: ct)
+            ?? new SyncState();
+
+        // Demo watermarks (DEMO-*) sort above numeric POS SaleIDs in string comparisons,
+        // which blocks all real sales until the state file is cleared.
+        if (!_options.UseDemoMode
+            && !string.IsNullOrEmpty(state.Watermark)
+            && state.Watermark.StartsWith("DEMO-", StringComparison.Ordinal))
+        {
+            _logger.LogWarning(
+                "Clearing demo watermark {Watermark} before live SQL sync.",
+                state.Watermark);
+            state.Watermark = "";
+            await SaveStateAsync(state, ct);
+        }
+
+        return state;
     }
 
     private async Task SaveStateAsync(SyncState state, CancellationToken ct)
@@ -194,6 +305,8 @@ public sealed class Worker : BackgroundService
         string Barcode,
         int Quantity,
         decimal UnitPrice);
+
+    private sealed record StockRow(string Barcode, int Quantity);
 
     private sealed class SyncState
     {
