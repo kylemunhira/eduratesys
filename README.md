@@ -14,17 +14,35 @@ Web portal for suppliers to track stock dispatched to customer branches, with sa
 
 ## Portal setup (Windows)
 
+Requires **PostgreSQL**. Create a role and database once (use your `postgres` superuser password):
+
 ```powershell
-cd c:\Users\HP\Desktop\4POSmoniter
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h localhost -c "CREATE USER ssms WITH PASSWORD 'ssms';"
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h localhost -c "CREATE DATABASE ssms OWNER ssms;"
+```
+
+Then:
+
+```powershell
+cd c:\Users\HP\Documents\GitHub\eduratesys
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r portal\requirements.txt
 copy portal\.env.example portal\.env
+# Edit portal\.env if your Postgres user/password/port differ
 cd portal
 python manage.py migrate
 python manage.py seed_demo
 python manage.py runserver
 ```
+
+`portal/.env` must set:
+
+```
+DATABASE_URL=postgres://ssms:ssms@localhost:5432/ssms
+```
+
+(Without `DATABASE_URL`, Django falls back to SQLite for local experiments only.)
 
 Open http://127.0.0.1:8000/
 
@@ -50,23 +68,6 @@ Header: `X-API-Key: <branch api key>`
 ```
 
 Duplicates on `(branch, external_sale_id)` return HTTP 200 with status `duplicate` and do not change stock again.
-
-### PostgreSQL (optional)
-
-Install PostgreSQL, create a database, then in `portal/.env`:
-
-```
-DATABASE_URL=postgres://USER:PASSWORD@localhost:5432/ssms
-```
-
-Install the driver and migrate:
-
-```powershell
-pip install psycopg[binary]
-python manage.py migrate
-```
-
-Without `DATABASE_URL`, the portal uses SQLite (`portal/db.sqlite3`).
 
 ## Sync service (.NET)
 
