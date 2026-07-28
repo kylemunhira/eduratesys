@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+db.sqlite3
+.env
+portal/staticfiles/
+portal/.env
+*.log
+.idea/
+.vscode/
+sync-service/**/bin/
+sync-service/**/obj/
+*.user

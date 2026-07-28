@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Sync report{% endblock %}
+{% block content %}
+<div class="topbar"><h1 class="page-title">Synchronization report</h1></div>
+<div class="card-panel">
+  <h2 class="h6">Branches</h2>
+  <table class="table table-sm">
+    <thead><tr><th>Customer</th><th>Branch</th><th>Last sync</th><th>Online</th></tr></thead>
+    <tbody>
+    {% for b in branches %}
+      <tr>
+        <td>{{ b.customer.name }}</td>
+        <td>{{ b.name }}</td>
+        <td>{{ b.last_sync_at|default:"Never" }}</td>
+        <td>{{ b.is_online }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <h2 class="h6 mt-3">Recent logs</h2>
+  <table class="table table-sm mb-0">
+    <thead><tr><th>When</th><th>Branch</th><th>Status</th><th>Sale ID</th><th>Message</th></tr></thead>
+    <tbody>
+    {% for l in logs %}
+      <tr>
+        <td class="small">{{ l.created_at }}</td>
+        <td>{{ l.branch.name }}</td>
+        <td>{{ l.get_status_display }}</td>
+        <td class="mono">{{ l.external_sale_id }}</td>
+        <td>{{ l.message }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="text-muted">No logs.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

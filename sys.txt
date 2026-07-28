@@ -1,0 +1,443 @@
+          Supplier Portal
+        +----------------------------+
+        | Django                     |
+        | Django Templates           |
+        | PostgreSQL                 |
+        +-------------+--------------+
+                      |
+               REST API (Django REST Framework)
+                      |
+        ---------------------------------------
+        |                 |                  |
+   Customer A        Customer B         Customer C
+      Branch             Branch             Branch
+         |                  |                 |
+    SQL Server         SQL Server        SQL Server
+         |                  |                 |
+    Windows Sync      Windows Sync     Windows Sync
+       Service           Service          Service
+	   
+	   
+	   
+	   
+	   
+	  Supplier Stock Monitoring System (SSMS)
+Project Overview
+
+The Supplier Stock Monitoring System (SSMS) is a web-based inventory tracking platform developed using Django and PostgreSQL. The system enables suppliers to monitor inventory distributed to customers and their branches in real time by collecting sales data from each branch's existing Point of Sale (POS) system.
+
+Instead of replacing the customer's POS software, the system integrates with it through a lightweight synchronization service installed at each branch. The service automatically retrieves sales transactions from the branch's Microsoft SQL Server database and uploads them to the central web portal whenever an internet connection is available.
+
+This approach provides suppliers with complete visibility of stock levels across all customer branches without requiring customers to change their existing systems.
+
+Business Scenario
+
+Supplier:
+
+Zimhope
+
+Customers:
+
+Ngoni
+Kiran
+Kyle
+
+Branches:
+
+Ngoni
+    • Harare CBD
+    • Borrowdale
+    • Chitungwiza
+
+Kiran
+    • Avondale
+    • Bulawayo
+    • Gweru
+    • Mutare
+    • Victoria Falls
+
+Kyle
+    • Msasa
+    • Southerton
+    • Ruwa
+    • Kadoma
+    • Gweru
+    • Bindura
+    • Marondera
+    • Chinhoyi
+
+The supplier dispatches products to each branch.
+
+Example:
+
+Dispatch
+
+Borrowdale Branch
+
+Milk            100
+Bread            50
+Sugar            40
+
+As the branch sells products through its existing POS system, sales are synchronized with the web portal, which automatically updates the remaining stock.
+
+Objectives
+
+The system aims to:
+
+Track stock supplied to customers.
+Monitor stock at individual branches.
+Automatically deduct stock based on branch sales.
+Display current stock balances in real time.
+Monitor branch synchronization status.
+Generate inventory and sales reports.
+Notify suppliers when stock is running low.
+Maintain a complete audit trail of stock movement.
+Technology Stack
+Component	Technology
+Backend	Django
+API	Django REST Framework
+Database	PostgreSQL
+Frontend	Django Templates
+UI Framework	Bootstrap 5
+Icons	Bootstrap Icons
+Charts	Chart.js
+Tables	DataTables
+Authentication	Django Authentication
+Background Tasks	Celery (optional)
+Web Server	Nginx + Gunicorn
+Deployment	Ubuntu Server / Docker
+Branch Database	Microsoft SQL Server
+Sync Service	C# .NET Worker Service
+System Architecture
+                        Supplier Portal
+                 Django + PostgreSQL
+                          │
+            Django REST Framework API
+                          │
+      ─────────────────────────────────────
+             Internet (HTTPS)
+      ─────────────────────────────────────
+          │            │             │
+     Customer A   Customer B   Customer C
+          │            │             │
+      Branches     Branches     Branches
+          │            │             │
+     SQL Server   SQL Server   SQL Server
+          │            │             │
+     Windows Sync Service (.NET)
+Core Modules
+1. User Management
+
+Manage:
+
+System Administrators
+Supplier Users
+Customer Managers (optional)
+User Roles
+Permissions
+2. Customer Management
+
+Manage customer information.
+
+Features
+
+Register customers
+Contact information
+Status
+Notes
+
+Example
+
+Customer
+
+Ngoni
+
+Phone
+Email
+Address
+3. Branch Management
+
+Each customer can own multiple branches.
+
+Features
+
+Branch Name
+Address
+GPS Location (optional)
+Branch Manager
+Sync Status
+API Key
+Machine Identifier
+4. Product Management
+
+Manage supplier products.
+
+Fields
+
+Product Code
+Barcode
+Name
+Category
+Unit
+Selling Price
+Cost Price
+Status
+5. Dispatch Management
+
+Record stock dispatched to branches.
+
+Example
+
+Dispatch #1024
+
+Customer:
+Ngoni
+
+Branch:
+Borrowdale
+
+Milk          100
+
+Bread          40
+
+Sugar          20
+
+Once approved, branch stock is increased.
+
+6. Branch Inventory
+
+The system maintains stock per branch.
+
+Formula
+
+Current Stock
+
+=
+
+Dispatched Stock
+
+-
+
+Sales
+
+Example
+
+Milk
+
+Received
+
+100
+
+Sold
+
+35
+
+Remaining
+
+65
+7. Sales Synchronization
+
+Each branch installs a Windows Sync Service.
+
+Responsibilities
+
+Read sales from SQL Server.
+Detect new sales.
+Convert transactions to JSON.
+Upload through REST API.
+Retry automatically if offline.
+Mark uploaded records as synchronized.
+
+No manual intervention is required.
+
+8. Dashboard
+
+Dashboard displays:
+
+Total Customers
+Total Branches
+Total Products
+Today's Sales
+Current Inventory
+Low Stock Alerts
+Offline Branches
+Recent Dispatches
+9. Reports
+
+Reports include:
+
+Stock Balance Report
+
+Current inventory for every branch.
+
+Dispatch Report
+
+Products supplied over a selected period.
+
+Sales Report
+
+Sales received from each branch.
+
+Customer Stock Summary
+
+Remaining stock by customer.
+
+Branch Performance
+
+Sales per branch.
+
+Synchronization Report
+
+Last synchronization time and status.
+
+10. Alerts
+
+Automatic alerts for:
+
+Low stock
+Offline branches
+Failed synchronization
+Duplicate uploads
+Missing products
+API authentication failures
+Database Overview
+Supplier
+    │
+Customers
+    │
+Branches
+    │
+Dispatches
+    │
+Dispatch Items
+
+Products
+
+Sales
+    │
+Sale Items
+
+Branch Stock
+
+Users
+
+Roles
+
+Sync Logs
+
+API Keys
+
+Notifications
+Data Flow
+Step 1
+
+Supplier dispatches stock.
+
+Milk
+
+100
+
+↓
+
+Step 2
+
+Branch receives stock.
+
+Branch Stock
+
+100
+
+↓
+
+Step 3
+
+Customer sells
+
+Milk
+
+5
+
+↓
+
+Step 4
+
+Windows Service detects sale.
+
+↓
+
+Step 5
+
+Service uploads sale.
+
+↓
+
+Step 6
+
+Django API receives sale.
+
+↓
+
+Step 7
+
+PostgreSQL updates inventory.
+
+100
+
+-
+
+5
+
+=
+
+95
+
+Supplier immediately sees:
+
+Milk Remaining
+
+95
+Security
+
+The platform will implement:
+
+Secure user authentication
+Role-based permissions
+HTTPS communication
+Unique API keys per branch
+Audit logs for all stock transactions
+Automatic validation of uploaded sales
+Duplicate transaction prevention
+Scalability
+
+The system is designed to support:
+
+Multiple suppliers (future enhancement)
+Unlimited customers
+Unlimited branches
+Millions of sales transactions
+Multiple synchronization services
+Mobile applications using the same REST API
+Expected Benefits
+Centralized visibility of stock across all customer branches.
+Automatic inventory updates based on actual sales.
+No changes required to customers' existing POS systems.
+Reduced manual stock reconciliation.
+Faster replenishment decisions through low-stock alerts.
+Improved accountability with complete stock movement history.
+Scalable architecture suitable for businesses with many customers and branches.
+Phase 1 Scope
+
+The initial release should focus on:
+
+User authentication and role management.
+Customer and branch management.
+Product management.
+Stock dispatch to branches.
+Windows Sync Service for Microsoft SQL Server.
+Django REST API for receiving sales.
+Automatic branch stock updates.
+Dashboard with inventory and synchronization status.
+Reporting (dispatch, sales, and stock balances).
+Audit logs and basic alerting.
+
+This provides a solid foundation that can later be extended with mobile apps, predictive stock replenishment, supplier analytics, and integration with additional ERP or accounting systems.

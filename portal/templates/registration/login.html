@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block title %}Sign in{% endblock %}
+{% block auth_content %}
+<div class="login-wrap">
+  <section class="login-hero" aria-label="SSMS brand">
+    <h1 class="login-hero-brand">SS<span>MS</span></h1>
+    <p class="login-hero-copy">
+      Track stock across every customer branch — dispatched in, sold out, synced live from the POS.
+    </p>
+  </section>
+  <section class="login-panel">
+    <div class="login-card">
+      <h1>Sign in</h1>
+      <p class="lead">Access the supplier monitoring portal</p>
+      <form method="post">
+        {% csrf_token %}
+        {{ form|crispy }}
+        <button class="btn btn-dark w-100 mt-2" type="submit">Continue</button>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

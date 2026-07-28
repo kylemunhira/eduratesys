@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ branch.name }}{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1 class="page-title">{{ branch.customer.name }} / {{ branch.name }}</h1>
+  <div class="d-flex gap-2">
+    <a class="btn btn-sm btn-outline-dark" href="{% url 'branch_edit' branch.pk %}">Edit</a>
+    {% if is_admin %}
+    <form method="post" action="{% url 'branch_delete' branch.pk %}" onsubmit="return confirm('Delete branch {{ branch.name }}? This cannot be undone.');">
+      {% csrf_token %}
+      <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+<div class="card-panel">
+  <p><strong>Manager:</strong> {{ branch.manager|default:"—" }}</p>
+  <p><strong>Address:</strong> {{ branch.address|default:"—" }}</p>
+  <p><strong>Machine ID:</strong> {{ branch.machine_id|default:"—" }}</p>
+  <p><strong>Last sync:</strong> {{ branch.last_sync_at|default:"Never" }}</p>
+  <p class="mb-2"><strong>API key</strong></p>
+  <code class="mono d-block mb-2">{{ branch.api_key }}</code>
+  <form method="post" action="{% url 'branch_regenerate_key' branch.pk %}" onsubmit="return confirm('Regenerate API key? The sync service must be updated.');">
+    {% csrf_token %}
+    <button class="btn btn-sm btn-outline-danger" type="submit">Regenerate key</button>
+  </form>
+</div>
+{% endblock %}

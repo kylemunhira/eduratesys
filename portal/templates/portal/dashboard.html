@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <p class="page-kicker">Operations</p>
+    <h1 class="page-title">Stock pulse</h1>
+    <p class="page-lead">Live view of customers, branch inventory, and POS sync health.</p>
+  </div>
+  <a class="btn btn-dark" href="{% url 'dispatch_create' %}">New dispatch</a>
+</div>
+
+<div class="stat-grid">
+  <div class="stat"><div class="label">Customers</div><div class="value">{{ total_customers }}</div></div>
+  <div class="stat"><div class="label">Branches</div><div class="value">{{ total_branches }}</div></div>
+  <div class="stat"><div class="label">Products</div><div class="value">{{ total_products }}</div></div>
+  <div class="stat"><div class="label">Today's sales</div><div class="value">{{ today_sales_count }}</div></div>
+  <div class="stat"><div class="label">Today's total</div><div class="value">{{ today_sales_total }}</div></div>
+  <div class="stat"><div class="label">Inventory units</div><div class="value">{{ inventory_units }}</div></div>
+</div>
+
+<div class="dash-grid">
+  <section class="card-panel">
+    <h2 class="panel-title">Needs attention · Low stock</h2>
+    {% if low_stock %}
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Branch</th><th>Product</th><th>Qty</th><th>Limit</th></tr></thead>
+      <tbody>
+      {% for row, limit in low_stock %}
+        <tr>
+          <td>{{ row.branch.name }}</td>
+          <td>{{ row.product.name }}</td>
+          <td><span class="badge badge-warn">{{ row.quantity }}</span></td>
+          <td>{{ limit }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted mb-0">No low-stock items right now.</p>
+    {% endif %}
+  </section>
+
+  <section class="card-panel">
+    <h2 class="panel-title">Needs attention · Sync gaps</h2>
+    {% if offline_branches %}
+    <ul class="list-unstyled mb-0">
+      {% for b in offline_branches %}
+      <li class="mb-2">
+        <a href="{% url 'branch_detail' b.pk %}">{{ b.customer.name }} / {{ b.name }}</a>
+        <div class="text-muted small">
+          {% if b.last_sync_at %}Last sync {{ b.last_sync_at }}{% else %}Never synced{% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-muted mb-0">All branches recently synced.</p>
+    {% endif %}
+  </section>
+
+  <section class="card-panel">
+    <h2 class="panel-title">Recent dispatches</h2>
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Ref</th><th>Branch</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for d in recent_dispatches %}
+        <tr>
+          <td><a href="{% url 'dispatch_detail' d.pk %}">{{ d.reference }}</a></td>
+          <td>{{ d.branch.name }}</td>
+          <td>{{ d.get_status_display }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="3" class="text-muted">No dispatches yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card-panel">
+    <h2 class="panel-title">Recent sync activity</h2>
+    <table class="table table-sm mb-0">
+      <thead><tr><th>When</th><th>Branch</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for s in recent_syncs %}
+        <tr>
+          <td class="small">{{ s.created_at }}</td>
+          <td>{{ s.branch.name }}</td>
+          <td>{{ s.get_status_display }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="3" class="text-muted">No sync logs yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Stock movement{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <p class="page-kicker">Reports</p>
+    <h1 class="page-title">Stock movement</h1>
+  </div>
+</div>
+<div class="card-panel">
+  <form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-0">From</label>
+      <input type="date" name="date_from" class="form-control form-control-sm" value="{{ date_from }}">
+    </div>
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-0">To</label>
+      <input type="date" name="date_to" class="form-control form-control-sm" value="{{ date_to }}">
+    </div>
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-0">Customer</label>
+      <select name="customer" class="form-select form-select-sm">
+        <option value="">All customers</option>
+        {% for c in customers %}
+          <option value="{{ c.pk }}" {% if selected_customer == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-0">Branch</label>
+      <select name="branch" class="form-select form-select-sm">
+        <option value="">All branches</option>
+        {% for b in branches %}
+          <option value="{{ b.pk }}" {% if selected_branch == b.pk|stringformat:"s" %}selected{% endif %}>{{ b.customer.name }} / {{ b.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-0">Group by</label>
+      <select name="group_by" class="form-select form-select-sm">
+        <option value="branch" {% if group_by == "branch" %}selected{% endif %}>Branch</option>
+        <option value="customer" {% if group_by == "customer" %}selected{% endif %}>Customer</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-sm btn-outline-dark" type="submit">Run report</button>
+    </div>
+  </form>
+
+  <p class="small text-muted mb-3">
+    Opening = stock before the period · Closing = Opening + Dispatched − Sold − Shrinkage/Damaged
+  </p>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Customer</th>
+          {% if group_by == "branch" %}<th>Branch</th>{% endif %}
+          <th>Code</th>
+          <th>Product</th>
+          <th class="text-end">Opening</th>
+          <th class="text-end">Dispatched</th>
+          <th class="text-end">Sold</th>
+          <th class="text-end">Shrinkage / Damaged</th>
+          <th class="text-end">Closing</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td>{{ r.customer.name }}</td>
+          {% if group_by == "branch" %}<td>{{ r.branch.name }}</td>{% endif %}
+          <td class="mono">{{ r.product.code }}</td>
+          <td>{{ r.product.name }}</td>
+          <td class="text-end">{{ r.opening }}</td>
+          <td class="text-end">{{ r.dispatched }}</td>
+          <td class="text-end">{{ r.sold }}</td>
+          <td class="text-end">{{ r.shrinkage }}</td>
+          <td class="text-end fw-semibold">{{ r.closing }}</td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="{% if group_by == 'branch' %}9{% else %}8{% endif %}" class="text-muted">
+            No stock movement for this period.
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

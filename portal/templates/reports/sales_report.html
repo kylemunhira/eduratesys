@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Sales report{% endblock %}
+{% block content %}
+<div class="topbar"><h1 class="page-title">Sales report</h1></div>
+<div class="card-panel">
+  <table class="table table-sm mb-0">
+    <thead><tr><th>External ID</th><th>Customer</th><th>Branch</th><th>Sold at</th><th>Total</th></tr></thead>
+    <tbody>
+    {% for s in sales %}
+      <tr>
+        <td class="mono">{{ s.external_sale_id }}</td>
+        <td>{{ s.branch.customer.name }}</td>
+        <td>{{ s.branch.name }}</td>
+        <td>{{ s.sold_at }}</td>
+        <td>{{ s.total_amount }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="text-muted">No sales synced yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

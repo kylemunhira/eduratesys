@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Customer stock{% endblock %}
+{% block content %}
+<div class="topbar"><h1 class="page-title">Customer stock summary</h1></div>
+<div class="card-panel">
+  <table class="table table-sm mb-0">
+    <thead><tr><th>Customer</th><th>Total units</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.branch__customer__name }}</td>
+        <td>{{ r.total_qty }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="2" class="text-muted">No stock.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

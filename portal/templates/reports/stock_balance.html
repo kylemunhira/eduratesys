@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Stock balance{% endblock %}
+{% block content %}
+<div class="topbar"><h1 class="page-title">Stock balance report</h1></div>
+<div class="card-panel">
+  <table class="table table-sm table-hover mb-0">
+    <thead><tr><th>Customer</th><th>Branch</th><th>Code</th><th>Product</th><th>Qty</th></tr></thead>
+    <tbody>
+    {% for s in stocks %}
+      <tr>
+        <td>{{ s.branch.customer.name }}</td>
+        <td>{{ s.branch.name }}</td>
+        <td class="mono">{{ s.product.code }}</td>
+        <td>{{ s.product.name }}</td>
+        <td>{{ s.quantity }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="text-muted">No stock.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

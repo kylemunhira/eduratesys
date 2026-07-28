@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Dispatch report{% endblock %}
+{% block content %}
+<div class="topbar"><h1 class="page-title">Dispatch report</h1></div>
+<div class="card-panel">
+  <form method="get" class="mb-3">
+    <select name="status" class="form-select form-select-sm w-auto d-inline-block">
+      <option value="">All statuses</option>
+      <option value="draft" {% if status == "draft" %}selected{% endif %}>Draft</option>
+      <option value="approved" {% if status == "approved" %}selected{% endif %}>Approved</option>
+      <option value="cancelled" {% if status == "cancelled" %}selected{% endif %}>Cancelled</option>
+    </select>
+    <button class="btn btn-sm btn-outline-dark" type="submit">Filter</button>
+  </form>
+  <table class="table table-sm mb-0">
+    <thead><tr><th>Ref</th><th>Customer</th><th>Branch</th><th>Status</th><th>Items</th></tr></thead>
+    <tbody>
+    {% for d in dispatches %}
+      <tr>
+        <td><a href="{% url 'dispatch_detail' d.pk %}">{{ d.reference }}</a></td>
+        <td>{{ d.customer.name }}</td>
+        <td>{{ d.branch.name }}</td>
+        <td>{{ d.get_status_display }}</td>
+        <td class="small">
+          {% for i in d.items.all %}{{ i.product.code }}×{{ i.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="text-muted">No dispatches.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

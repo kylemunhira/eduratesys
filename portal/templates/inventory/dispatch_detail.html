@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ dispatch.reference }}{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1 class="page-title">{{ dispatch.reference }}</h1>
+  {% if dispatch.status == "draft" %}
+  <form method="post" action="{% url 'dispatch_approve' dispatch.pk %}">
+    {% csrf_token %}
+    <button class="btn btn-sm btn-dark" type="submit">Approve &amp; update stock</button>
+  </form>
+  {% endif %}
+</div>
+<div class="card-panel">
+  <p><strong>Customer:</strong> {{ dispatch.customer.name }}</p>
+  <p><strong>Branch:</strong> {{ dispatch.branch.name }}</p>
+  <p><strong>Status:</strong> {{ dispatch.get_status_display }}</p>
+  {% if dispatch.approved_at %}<p><strong>Approved:</strong> {{ dispatch.approved_at }}</p>{% endif %}
+  <p><strong>Notes:</strong> {{ dispatch.notes|default:"—" }}</p>
+  <table class="table table-sm mb-0">
+    <thead><tr><th>Product</th><th>Qty</th></tr></thead>
+    <tbody>
+    {% for item in dispatch.items.all %}
+      <tr><td>{{ item.product.code }} — {{ item.product.name }}</td><td>{{ item.quantity }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
