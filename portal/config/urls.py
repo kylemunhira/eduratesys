@@ -3,6 +3,7 @@ from django.contrib.auth import views as auth_views
 from django.urls import include, path
 
 from accounts.views import dashboard
+from accounts import user_views
 from catalog import views as catalog_views
 from inventory import views as inventory_views
 from reports import views as report_views
@@ -18,6 +19,10 @@ urlpatterns = [
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("", dashboard, name="dashboard"),
     path("api/", include("sales.urls_api")),
+    # Users (IT)
+    path("users/", user_views.user_list, name="user_list"),
+    path("users/new/", user_views.user_create, name="user_create"),
+    path("users/<int:pk>/edit/", user_views.user_edit, name="user_edit"),
     # Catalog
     path("customers/", catalog_views.customer_list, name="customer_list"),
     path("customers/new/", catalog_views.customer_create, name="customer_create"),

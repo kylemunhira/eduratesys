@@ -1,10 +1,11 @@
 from pathlib import Path
 
-from django.contrib.auth.models import Group, User
+from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from accounts.roles import ADMIN_GROUP, SUPPLIER_GROUP, ensure_role_groups
+from accounts.models import UserProfile
+from accounts.roles import ROLE_IT, ensure_role_groups
 from catalog.management.commands.import_stockfeed import (
     EXCEL_DEFAULT,
     parse_products,
@@ -27,7 +28,7 @@ BRANCHES = [
 
 class Command(BaseCommand):
     help = (
-        "Seed admin user, VAST AFRICA customer/branches, and products "
+        "Seed IT admin user, VAST AFRICA customer/branches, and products "
         "from Product Codes Stockfeed.xlsx."
     )
 
@@ -55,8 +56,6 @@ class Command(BaseCommand):
             )
 
         ensure_role_groups()
-        admin_group = Group.objects.get(name=ADMIN_GROUP)
-        supplier_group = Group.objects.get(name=SUPPLIER_GROUP)
 
         user, created = User.objects.get_or_create(
             username="admin",
@@ -72,7 +71,12 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("Created admin / " + options["password"]))
         else:
             self.stdout.write("Admin user already exists.")
-        user.groups.add(admin_group, supplier_group)
+
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile.role = ROLE_IT
+        profile.save()
+        profile.branches.clear()
+        self.stdout.write(self.style.SUCCESS("Admin profile role: IT (all branches)."))
 
         customer, created = Customer.objects.get_or_create(
             name=CUSTOMER_NAME,

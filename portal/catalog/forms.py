@@ -46,19 +46,24 @@ class DispatchForm(forms.ModelForm):
         model = Dispatch
         fields = ("customer", "branch", "notes")
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["branch"].queryset = Branch.objects.select_related("customer")
+        from accounts.roles import accessible_branches
+
+        allowed = accessible_branches(user) if user else Branch.objects.select_related(
+            "customer"
+        )
+        self.fields["branch"].queryset = allowed
+        customer_ids = allowed.values_list("customer_id", flat=True).distinct()
+        self.fields["customer"].queryset = Customer.objects.filter(pk__in=customer_ids)
         if "customer" in self.data:
             try:
                 customer_id = int(self.data.get("customer"))
-                self.fields["branch"].queryset = Branch.objects.filter(
-                    customer_id=customer_id
-                )
+                self.fields["branch"].queryset = allowed.filter(customer_id=customer_id)
             except (TypeError, ValueError):
                 pass
         elif self.instance.pk:
-            self.fields["branch"].queryset = Branch.objects.filter(
+            self.fields["branch"].queryset = allowed.filter(
                 customer=self.instance.customer
             )
 

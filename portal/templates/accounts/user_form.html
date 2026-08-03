@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <p class="page-kicker">Access</p>
+    <h1 class="page-title">{{ title }}</h1>
+  </div>
+</div>
+<div class="card-panel" style="max-width:720px">
+  <form method="post">{% csrf_token %}
+    {{ form|crispy }}
+    <p class="form-text text-muted mb-3">
+      Sales Admin and Sales only see the branches you assign.
+      IT, Business Head, and Commercial Manager see all branches.
+    </p>
+    <button class="btn btn-dark" type="submit">Save</button>
+    <a class="btn btn-link" href="{% url 'user_list' %}">Cancel</a>
+  </form>
+</div>
+{% endblock %}

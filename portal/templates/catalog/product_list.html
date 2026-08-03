@@ -6,7 +6,9 @@
     <p class="page-kicker">Catalog</p>
     <h1 class="page-title">Products</h1>
   </div>
+  {% if is_admin %}
   <a class="btn btn-dark" href="{% url 'product_create' %}">Add product</a>
+  {% endif %}
 </div>
 <div class="card-panel">
   <table class="table table-hover mb-0">
@@ -20,7 +22,7 @@
         <td>{{ p.unit }}</td>
         <td>{{ p.selling_price }}</td>
         <td>{{ p.get_status_display }}</td>
-        <td><a href="{% url 'product_edit' p.pk %}">Edit</a></td>
+        <td>{% if is_admin %}<a href="{% url 'product_edit' p.pk %}">Edit</a>{% else %}—{% endif %}</td>
       </tr>
     {% empty %}
       <tr><td colspan="7" class="text-muted">No products.</td></tr>

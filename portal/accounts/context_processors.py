@@ -1,5 +1,16 @@
-from accounts.roles import user_is_admin
+from accounts.roles import (
+    user_can_manage_users,
+    user_is_admin,
+    user_role,
+    user_sees_all_branches,
+)
 
 
 def roles(request):
-    return {"is_admin": user_is_admin(request.user)}
+    user = request.user
+    return {
+        "is_admin": user_is_admin(user),
+        "can_manage_users": user_can_manage_users(user),
+        "user_role": user_role(user),
+        "sees_all_branches": user_sees_all_branches(user),
+    }

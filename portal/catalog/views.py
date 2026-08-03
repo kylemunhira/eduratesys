@@ -5,14 +5,25 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from accounts.models import log_audit
-from accounts.roles import user_is_admin
+from accounts.roles import (
+    accessible_branches,
+    user_can_access_branch,
+    user_is_admin,
+)
 
 from .forms import BranchForm, CustomerForm, ProductForm
 from .models import Branch, Customer, Product
 
 
-def _require_admin(request, message="Only admins can perform this action."):
+def _require_admin(request, message="Only IT can perform this action."):
     if not user_is_admin(request.user):
+        messages.error(request, message)
+        return False
+    return True
+
+
+def _require_branch_access(request, branch, message="You do not have access to this branch."):
+    if not user_can_access_branch(request.user, branch):
         messages.error(request, message)
         return False
     return True
@@ -20,7 +31,7 @@ def _require_admin(request, message="Only admins can perform this action."):
 
 @login_required
 def customer_list(request):
-    if not _require_admin(request, "Customers are only available to admins."):
+    if not _require_admin(request, "Customers are only available to IT."):
         return redirect("dashboard")
     customers = Customer.objects.all()
     return render(request, "catalog/customer_list.html", {"customers": customers})
@@ -28,7 +39,7 @@ def customer_list(request):
 
 @login_required
 def customer_create(request):
-    if not _require_admin(request, "Customers are only available to admins."):
+    if not _require_admin(request, "Customers are only available to IT."):
         return redirect("dashboard")
     form = CustomerForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -40,7 +51,7 @@ def customer_create(request):
 
 @login_required
 def customer_edit(request, pk):
-    if not _require_admin(request, "Customers are only available to admins."):
+    if not _require_admin(request, "Customers are only available to IT."):
         return redirect("dashboard")
     customer = get_object_or_404(Customer, pk=pk)
     form = CustomerForm(request.POST or None, instance=customer)
@@ -57,7 +68,7 @@ def customer_edit(request, pk):
 
 @login_required
 def customer_detail(request, pk):
-    if not _require_admin(request, "Customers are only available to admins."):
+    if not _require_admin(request, "Customers are only available to IT."):
         return redirect("dashboard")
     customer = get_object_or_404(Customer.objects.prefetch_related("branches"), pk=pk)
     return render(request, "catalog/customer_detail.html", {"customer": customer})
@@ -66,7 +77,7 @@ def customer_detail(request, pk):
 @login_required
 @require_POST
 def customer_delete(request, pk):
-    if not _require_admin(request, "Only admins can delete customers and branches."):
+    if not _require_admin(request, "Only IT can delete customers and branches."):
         return redirect("dashboard")
     customer = get_object_or_404(Customer, pk=pk)
     name = customer.name
@@ -92,12 +103,14 @@ def customer_delete(request, pk):
 
 @login_required
 def branch_list(request):
-    branches = Branch.objects.select_related("customer")
+    branches = accessible_branches(request.user)
     return render(request, "catalog/branch_list.html", {"branches": branches})
 
 
 @login_required
 def branch_create(request):
+    if not _require_admin(request, "Only IT can create branches."):
+        return redirect("branch_list")
     form = BranchForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         form.save()
@@ -109,12 +122,19 @@ def branch_create(request):
 @login_required
 def branch_detail(request, pk):
     branch = get_object_or_404(Branch.objects.select_related("customer"), pk=pk)
+    if not _require_branch_access(request, branch):
+        return redirect("branch_list")
     return render(request, "catalog/branch_detail.html", {"branch": branch})
 
 
 @login_required
 def branch_edit(request, pk):
     branch = get_object_or_404(Branch, pk=pk)
+    if not _require_branch_access(request, branch):
+        return redirect("branch_list")
+    if not user_is_admin(request.user):
+        messages.error(request, "Only IT can edit branch details.")
+        return redirect("branch_detail", pk=branch.pk)
     form = BranchForm(request.POST or None, instance=branch)
     if request.method == "POST" and form.is_valid():
         form.save()
@@ -131,6 +151,11 @@ def branch_edit(request, pk):
 @require_POST
 def branch_regenerate_key(request, pk):
     branch = get_object_or_404(Branch, pk=pk)
+    if not _require_branch_access(request, branch):
+        return redirect("branch_list")
+    if not user_is_admin(request.user):
+        messages.error(request, "Only IT can regenerate API keys.")
+        return redirect("branch_detail", pk=branch.pk)
     branch.regenerate_api_key()
     messages.success(request, "API key regenerated.")
     return redirect("branch_detail", pk=branch.pk)
@@ -171,6 +196,8 @@ def product_list(request):
 
 @login_required
 def product_create(request):
+    if not _require_admin(request, "Only IT can create products."):
+        return redirect("product_list")
     form = ProductForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         form.save()
@@ -181,6 +208,8 @@ def product_create(request):
 
 @login_required
 def product_edit(request, pk):
+    if not _require_admin(request, "Only IT can edit products."):
+        return redirect("product_list")
     product = get_object_or_404(Product, pk=pk)
     form = ProductForm(request.POST or None, instance=product)
     if request.method == "POST" and form.is_valid():

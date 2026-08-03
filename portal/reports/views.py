@@ -12,6 +12,11 @@ from inventory.models import BranchStock, Dispatch, DispatchItem, StockLoss
 from reports.period import parse_period_bounds
 from reports.pos_db import PosDbError, fetch_grv_purchase_lines
 from sales.models import SaleItem, SyncLog
+from accounts.roles import (
+    accessible_branches,
+    filter_by_accessible_branches,
+    user_can_access_branch,
+)
 
 _PACK_SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*kg\b", re.IGNORECASE)
 COMPANY_NAME = "EDURATE INVESTMENTS (PVT) LTD"
@@ -63,22 +68,26 @@ def sales_report_data(request):
     Volume on summary sheets is tons (qty × pack kg / 1000).
     """
     bounds = parse_period_bounds(request)
-    items = (
+    items = filter_by_accessible_branches(
         SaleItem.objects.select_related(
             "product",
             "sale",
             "sale__branch",
             "sale__branch__customer",
-        )
-        .filter(
+        ).filter(
             sale__sold_at__gte=bounds["start_dt"],
             sale__sold_at__lt=bounds["end_dt"],
-        )
-        .order_by("sale__sold_at", "sale__external_sale_id", "pk")
-    )
+        ),
+        request.user,
+        field="sale__branch_id",
+    ).order_by("sale__sold_at", "sale__external_sale_id", "pk")
     branch_id = request.GET.get("branch") or ""
     if branch_id.isdigit():
-        items = items.filter(sale__branch_id=int(branch_id))
+        bid = int(branch_id)
+        if not user_can_access_branch(request.user, bid):
+            items = items.none()
+        else:
+            items = items.filter(sale__branch_id=bid)
 
     # Key: (product_id, customer_id, branch_id, unit_price) → combined qty sold
     aggregated = {}
@@ -196,8 +205,11 @@ def sales_report_data(request):
 
 @login_required
 def stock_balance(request):
-    stocks = BranchStock.objects.select_related(
-        "branch", "branch__customer", "product"
+    stocks = filter_by_accessible_branches(
+        BranchStock.objects.select_related(
+            "branch", "branch__customer", "product"
+        ),
+        request.user,
     )
     return render(request, "reports/stock_balance.html", {"stocks": stocks})
 
@@ -205,10 +217,11 @@ def stock_balance(request):
 @login_required
 def dispatch_report(request):
     bounds = parse_period_bounds(request)
-    dispatches = (
+    dispatches = filter_by_accessible_branches(
         Dispatch.objects.select_related("customer", "branch")
         .prefetch_related("items__product")
-        .filter(created_at__gte=bounds["start_dt"], created_at__lt=bounds["end_dt"])
+        .filter(created_at__gte=bounds["start_dt"], created_at__lt=bounds["end_dt"]),
+        request.user,
     )
     status = request.GET.get("status")
     if status:
@@ -244,7 +257,7 @@ def sales_report(request):
             "by_sku": by_sku,
             "by_branch": by_branch,
             "totals": totals,
-            "branches": Branch.objects.select_related("customer"),
+            "branches": accessible_branches(request.user),
             "selected_branch": branch_id,
             "date_from_display": bounds["date_from"],
             "date_to_display": bounds["date_to"],
@@ -253,10 +266,17 @@ def sales_report(request):
     )
 
 
-def customer_stock_summary_data():
+def customer_stock_summary_data(user=None):
     """Current stock units and all-time sold tonnage per customer."""
+    stock_qs = BranchStock.objects.all()
+    sale_qs = SaleItem.objects.all()
+    if user is not None:
+        stock_qs = filter_by_accessible_branches(stock_qs, user)
+        sale_qs = filter_by_accessible_branches(
+            sale_qs, user, field="sale__branch_id"
+        )
     stock_rows = list(
-        BranchStock.objects.values(
+        stock_qs.values(
             "branch__customer__name", "branch__customer_id"
         )
         .annotate(total_qty=Sum("quantity"))
@@ -264,7 +284,7 @@ def customer_stock_summary_data():
     )
 
     sold_by_customer = defaultdict(lambda: Decimal("0"))
-    sale_aggs = SaleItem.objects.values(
+    sale_aggs = sale_qs.values(
         "sale__branch__customer_id",
         "product__name",
     ).annotate(qty=Sum("quantity"))
@@ -291,16 +311,19 @@ def customer_stock_summary(request):
     return render(
         request,
         "reports/customer_stock.html",
-        {"rows": customer_stock_summary_data()},
+        {"rows": customer_stock_summary_data(request.user)},
     )
 
 
 @login_required
 def sync_report(request):
     bounds = parse_period_bounds(request)
-    branches = Branch.objects.select_related("customer")
-    logs = SyncLog.objects.select_related("branch").filter(
-        created_at__gte=bounds["start_dt"], created_at__lt=bounds["end_dt"]
+    branches = accessible_branches(request.user)
+    logs = filter_by_accessible_branches(
+        SyncLog.objects.select_related("branch").filter(
+            created_at__gte=bounds["start_dt"], created_at__lt=bounds["end_dt"]
+        ),
+        request.user,
     )[:100]
     return render(
         request,
@@ -331,17 +354,28 @@ def stock_movement(request):
     customer_id = request.GET.get("customer") or ""
     branch_id = request.GET.get("branch") or ""
 
-    customers = Customer.objects.all()
-    branches = Branch.objects.select_related("customer")
+    allowed = accessible_branches(request.user)
+    customers = Customer.objects.filter(
+        pk__in=allowed.values_list("customer_id", flat=True)
+    ).distinct()
+    branches = allowed
     if customer_id.isdigit():
         branches = branches.filter(customer_id=int(customer_id))
 
-    dispatch_base = DispatchItem.objects.filter(
-        dispatch__status=Dispatch.Status.APPROVED,
-        dispatch__approved_at__isnull=False,
+    dispatch_base = filter_by_accessible_branches(
+        DispatchItem.objects.filter(
+            dispatch__status=Dispatch.Status.APPROVED,
+            dispatch__approved_at__isnull=False,
+        ),
+        request.user,
+        field="dispatch__branch_id",
     )
-    sale_base = SaleItem.objects.all()
-    loss_base = StockLoss.objects.all()
+    sale_base = filter_by_accessible_branches(
+        SaleItem.objects.all(),
+        request.user,
+        field="sale__branch_id",
+    )
+    loss_base = filter_by_accessible_branches(StockLoss.objects.all(), request.user)
 
     if customer_id.isdigit():
         cid = int(customer_id)
@@ -350,9 +384,14 @@ def stock_movement(request):
         loss_base = loss_base.filter(branch__customer_id=cid)
     if branch_id.isdigit():
         bid = int(branch_id)
-        dispatch_base = dispatch_base.filter(dispatch__branch_id=bid)
-        sale_base = sale_base.filter(sale__branch_id=bid)
-        loss_base = loss_base.filter(branch_id=bid)
+        if not user_can_access_branch(request.user, bid):
+            dispatch_base = dispatch_base.none()
+            sale_base = sale_base.none()
+            loss_base = loss_base.none()
+        else:
+            dispatch_base = dispatch_base.filter(dispatch__branch_id=bid)
+            sale_base = sale_base.filter(sale__branch_id=bid)
+            loss_base = loss_base.filter(branch_id=bid)
 
     if group_by == "customer":
         d_key = ("dispatch__customer_id", "product_id")
@@ -370,11 +409,15 @@ def stock_movement(request):
         }
 
     # Opening stock from BranchStock (matches Stock Balance report)
-    stock_qs = BranchStock.objects.all()
+    stock_qs = filter_by_accessible_branches(BranchStock.objects.all(), request.user)
     if customer_id.isdigit():
         stock_qs = stock_qs.filter(branch__customer_id=int(customer_id))
     if branch_id.isdigit():
-        stock_qs = stock_qs.filter(branch_id=int(branch_id))
+        bid = int(branch_id)
+        if user_can_access_branch(request.user, bid):
+            stock_qs = stock_qs.filter(branch_id=bid)
+        else:
+            stock_qs = stock_qs.none()
 
     if group_by == "customer":
         stock_balance = _bucket(
@@ -500,11 +543,15 @@ def dispatch_warehouse_data(request):
     end_dt = bounds["end_dt"]
 
     items = (
-        DispatchItem.objects.filter(
-            dispatch__status=Dispatch.Status.APPROVED,
-            dispatch__approved_at__isnull=False,
-            dispatch__approved_at__gte=start_dt,
-            dispatch__approved_at__lt=end_dt,
+        filter_by_accessible_branches(
+            DispatchItem.objects.filter(
+                dispatch__status=Dispatch.Status.APPROVED,
+                dispatch__approved_at__isnull=False,
+                dispatch__approved_at__gte=start_dt,
+                dispatch__approved_at__lt=end_dt,
+            ),
+            request.user,
+            field="dispatch__branch_id",
         )
         .values(
             "product__category",
@@ -565,18 +612,21 @@ def dispatch_warehouse_report(request):
     )
 
 
-def _sold_tons_by_customer(start_dt, end_dt):
+def _sold_tons_by_customer(start_dt, end_dt, user=None):
     """Portal sold tonnage per customer name for [start_dt, end_dt)."""
     sold = defaultdict(lambda: Decimal("0"))
     display_names = {}
-    sale_aggs = (
-        SaleItem.objects.filter(
-            sale__sold_at__gte=start_dt,
-            sale__sold_at__lt=end_dt,
-        )
-        .values("sale__branch__customer__name", "product__name")
-        .annotate(qty=Sum("quantity"))
+    sale_qs = SaleItem.objects.filter(
+        sale__sold_at__gte=start_dt,
+        sale__sold_at__lt=end_dt,
     )
+    if user is not None:
+        sale_qs = filter_by_accessible_branches(
+            sale_qs, user, field="sale__branch_id"
+        )
+    sale_aggs = sale_qs.values(
+        "sale__branch__customer__name", "product__name"
+    ).annotate(qty=Sum("quantity"))
     for row in sale_aggs:
         name = row["sale__branch__customer__name"] or "Unknown"
         key = name.casefold()
@@ -640,7 +690,7 @@ def customer_tonnage_data(request):
         bucket["lines"] += 1
 
     sold_by_key, sold_names = _sold_tons_by_customer(
-        bounds["start_dt"], bounds["end_dt"]
+        bounds["start_dt"], bounds["end_dt"], user=request.user
     )
     for key, tons in sold_by_key.items():
         bucket = by_customer[key]

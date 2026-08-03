@@ -6,7 +6,9 @@
     <p class="page-kicker">Catalog</p>
     <h1 class="page-title">Branches</h1>
   </div>
+  {% if is_admin %}
   <a class="btn btn-dark" href="{% url 'branch_create' %}">Add branch</a>
+  {% endif %}
 </div>
 <div class="card-panel">
   <table class="table table-hover mb-0">
@@ -20,8 +22,9 @@
         <td class="small">{{ b.last_sync_at|default:"Never" }}</td>
         <td>{% if b.is_online %}<span class="badge badge-soft">Yes</span>{% else %}<span class="badge text-bg-secondary">No</span>{% endif %}</td>
         <td>
-          <a href="{% url 'branch_edit' b.pk %}">Edit</a>
+          <a href="{% url 'branch_detail' b.pk %}">View</a>
           {% if is_admin %}
+          · <a href="{% url 'branch_edit' b.pk %}">Edit</a>
           ·
           <form method="post" action="{% url 'branch_delete' b.pk %}" class="d-inline" onsubmit="return confirm('Delete branch {{ b.name }}?');">
             {% csrf_token %}

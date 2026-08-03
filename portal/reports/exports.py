@@ -12,6 +12,7 @@ from django.db.models import Sum
 from inventory.models import BranchStock, Dispatch, DispatchItem, StockLoss
 from reports.period import parse_period_bounds
 from sales.models import SaleItem, SyncLog
+from accounts.roles import filter_by_accessible_branches
 
 
 def _make_response(filename, content_type):
@@ -59,8 +60,11 @@ def _export(request, headers, rows, sheet_title="Report"):
 
 @login_required
 def export_stock_balance(request):
-    stocks = BranchStock.objects.select_related(
-        "branch", "branch__customer", "product"
+    stocks = filter_by_accessible_branches(
+        BranchStock.objects.select_related(
+            "branch", "branch__customer", "product"
+        ),
+        request.user,
     )
     headers = ["Customer", "Branch", "Code", "Product", "Qty"]
     rows = [
@@ -75,10 +79,11 @@ def export_stock_balance(request):
 @login_required
 def export_dispatches(request):
     bounds = parse_period_bounds(request)
-    dispatches = (
+    dispatches = filter_by_accessible_branches(
         Dispatch.objects.select_related("customer", "branch")
         .prefetch_related("items__product")
-        .filter(created_at__gte=bounds["start_dt"], created_at__lt=bounds["end_dt"])
+        .filter(created_at__gte=bounds["start_dt"], created_at__lt=bounds["end_dt"]),
+        request.user,
     )
     status = request.GET.get("status")
     if status:
@@ -232,7 +237,7 @@ def export_sales(request):
 def export_customer_stock(request):
     from reports.views import customer_stock_summary_data
 
-    data = customer_stock_summary_data()
+    data = customer_stock_summary_data(request.user)
     headers = ["Customer", "Total Units", "Total Tons Sold"]
     rows = [
         [r["customer_name"], r["total_qty"], float(r["total_tons_sold"])]
@@ -246,8 +251,11 @@ def export_customer_stock(request):
 @login_required
 def export_sync(request):
     bounds = parse_period_bounds(request)
-    logs = SyncLog.objects.select_related("branch").filter(
-        created_at__gte=bounds["start_dt"], created_at__lt=bounds["end_dt"]
+    logs = filter_by_accessible_branches(
+        SyncLog.objects.select_related("branch").filter(
+            created_at__gte=bounds["start_dt"], created_at__lt=bounds["end_dt"]
+        ),
+        request.user,
     )[:100]
     headers = ["When", "Branch", "Status", "Sale ID", "Message"]
     rows = [
@@ -267,7 +275,6 @@ def export_sync(request):
 
 @login_required
 def export_stock_movement(request):
-    from reports.views import stock_movement as _sm_view
     from collections import defaultdict
 
     bounds = parse_period_bounds(request)
@@ -280,12 +287,20 @@ def export_stock_movement(request):
     customer_id = request.GET.get("customer") or ""
     branch_id = request.GET.get("branch") or ""
 
-    dispatch_base = DispatchItem.objects.filter(
-        dispatch__status=Dispatch.Status.APPROVED,
-        dispatch__approved_at__isnull=False,
+    dispatch_base = filter_by_accessible_branches(
+        DispatchItem.objects.filter(
+            dispatch__status=Dispatch.Status.APPROVED,
+            dispatch__approved_at__isnull=False,
+        ),
+        request.user,
+        field="dispatch__branch_id",
     )
-    sale_base = SaleItem.objects.all()
-    loss_base = StockLoss.objects.all()
+    sale_base = filter_by_accessible_branches(
+        SaleItem.objects.all(),
+        request.user,
+        field="sale__branch_id",
+    )
+    loss_base = filter_by_accessible_branches(StockLoss.objects.all(), request.user)
 
     if customer_id.isdigit():
         cid = int(customer_id)
@@ -313,7 +328,7 @@ def export_stock_movement(request):
             for row in qs.values(*values_fields).annotate(total=Sum(qty_field))
         }
 
-    stock_qs = BranchStock.objects.all()
+    stock_qs = filter_by_accessible_branches(BranchStock.objects.all(), request.user)
     if customer_id.isdigit():
         stock_qs = stock_qs.filter(branch__customer_id=int(customer_id))
     if branch_id.isdigit():

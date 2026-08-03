@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <p class="page-kicker">Access</p>
+    <h1 class="page-title">Users</h1>
+  </div>
+  <a class="btn btn-dark" href="{% url 'user_create' %}">Add user</a>
+</div>
+<div class="card-panel">
+  <table class="table table-hover mb-0">
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Name</th>
+        <th>Role</th>
+        <th>Branches</th>
+        <th>Active</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for u in users %}
+      <tr>
+        <td>{{ u.username }}</td>
+        <td>{{ u.get_full_name|default:"—" }}</td>
+        <td>{% if u.profile %}{{ u.profile.role }}{% else %}—{% endif %}</td>
+        <td class="small">
+          {% if u.profile %}
+            {% if u.profile.role == "IT" or u.profile.role == "Business Head" or u.profile.role == "Commercial Manager" %}
+              All branches
+            {% else %}
+              {% for b in u.profile.branches.all %}
+                {{ b.customer.name }} / {{ b.name }}{% if not forloop.last %}; {% endif %}
+              {% empty %}
+                <span class="text-muted">None assigned</span>
+              {% endfor %}
+            {% endif %}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td>{% if u.is_active %}<span class="badge badge-soft">Yes</span>{% else %}<span class="badge text-bg-secondary">No</span>{% endif %}</td>
+        <td><a href="{% url 'user_edit' u.pk %}">Edit</a></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="text-muted">No users.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

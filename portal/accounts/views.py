@@ -8,6 +8,7 @@ from django.db.models.functions import Trim
 from django.shortcuts import render
 from django.utils import timezone
 
+from accounts.roles import accessible_branches, filter_by_accessible_branches
 from catalog.models import Branch, Customer, Product
 from inventory.models import BranchStock, Dispatch
 from reports.period import parse_period_bounds
@@ -39,6 +40,7 @@ def dashboard(request):
     now = timezone.now()
     offline_cutoff = now - timedelta(hours=settings.BRANCH_OFFLINE_HOURS)
     threshold = settings.LOW_STOCK_THRESHOLD
+    allowed_branches = accessible_branches(request.user)
 
     products_qs = _filter_by_category(
         Product.objects.filter(status=Product.Status.ACTIVE),
@@ -46,12 +48,19 @@ def dashboard(request):
         category_field="category",
     )
     stock_qs = _filter_by_category(
-        BranchStock.objects.select_related("branch", "product"),
+        filter_by_accessible_branches(
+            BranchStock.objects.select_related("branch", "product"),
+            request.user,
+        ),
         selected_category,
     )
     sale_items = _filter_by_category(
-        SaleItem.objects.filter(
-            sale__sold_at__gte=start_dt, sale__sold_at__lt=end_dt
+        filter_by_accessible_branches(
+            SaleItem.objects.filter(
+                sale__sold_at__gte=start_dt, sale__sold_at__lt=end_dt
+            ),
+            request.user,
+            field="sale__branch_id",
         ),
         selected_category,
     )
@@ -59,9 +68,9 @@ def dashboard(request):
     if selected_category:
         branch_ids = set(stock_qs.values_list("branch_id", flat=True))
         branch_ids.update(sale_items.values_list("sale__branch_id", flat=True))
-        branches = Branch.objects.select_related("customer").filter(pk__in=branch_ids)
+        branches = allowed_branches.filter(pk__in=branch_ids)
     else:
-        branches = Branch.objects.select_related("customer")
+        branches = allowed_branches
 
     offline_branches = [
         b
@@ -84,13 +93,16 @@ def dashboard(request):
     # Category cards always cover the full period so users can switch filters.
     # Volume is tons (qty × pack kg / 1000), matching sales reports.
     category_totals = {}
-    for row in (
+    category_sale_items = filter_by_accessible_branches(
         SaleItem.objects.filter(
             sale__sold_at__gte=start_dt, sale__sold_at__lt=end_dt
-        )
-        .values("product__category", "product__name")
-        .annotate(qty=Sum("quantity"))
-    ):
+        ),
+        request.user,
+        field="sale__branch_id",
+    )
+    for row in category_sale_items.values(
+        "product__category", "product__name"
+    ).annotate(qty=Sum("quantity")):
         name = (row["product__category"] or "").strip() or "Uncategorized"
         tons = _tons(row["qty"], pack_size_kg(row["product__name"]))
         volume = tons if tons is not None else Decimal("0")
@@ -125,7 +137,10 @@ def dashboard(request):
         )
     else:
         top_branches = list(
-            Sale.objects.filter(sold_at__gte=start_dt, sold_at__lt=end_dt)
+            filter_by_accessible_branches(
+                Sale.objects.filter(sold_at__gte=start_dt, sold_at__lt=end_dt),
+                request.user,
+            )
             .values("branch__name", "branch__customer__name")
             .annotate(revenue=Sum("total_amount"), sales_count=Count("id"))
             .order_by("-revenue")[:8]
@@ -134,22 +149,29 @@ def dashboard(request):
             f"{row['branch__customer__name']} / {row['branch__name']}"
             for row in top_branches
         ]
-        period_sales = Sale.objects.filter(
-            sold_at__gte=start_dt, sold_at__lt=end_dt
+        period_sales = filter_by_accessible_branches(
+            Sale.objects.filter(sold_at__gte=start_dt, sold_at__lt=end_dt),
+            request.user,
         )
         period_sales_count = period_sales.count()
         period_sales_total = period_sales.aggregate(s=Sum("total_amount"))["s"] or 0
 
-    dispatches = Dispatch.objects.select_related("customer", "branch").filter(
-        created_at__gte=start_dt, created_at__lt=end_dt
+    dispatches = filter_by_accessible_branches(
+        Dispatch.objects.select_related("customer", "branch").filter(
+            created_at__gte=start_dt, created_at__lt=end_dt
+        ),
+        request.user,
     )
     if selected_category:
         dispatches = _filter_by_category(
             dispatches, selected_category, category_field="items__product__category"
         ).distinct()
 
-    syncs = SyncLog.objects.select_related("branch").filter(
-        created_at__gte=start_dt, created_at__lt=end_dt
+    syncs = filter_by_accessible_branches(
+        SyncLog.objects.select_related("branch").filter(
+            created_at__gte=start_dt, created_at__lt=end_dt
+        ),
+        request.user,
     )
     if selected_category:
         syncs = syncs.filter(branch_id__in=branches.values_list("pk", flat=True))
@@ -170,8 +192,12 @@ def dashboard(request):
             "labels": top_branch_labels,
             "values": [float(row["revenue"] or 0) for row in top_branches],
         },
-        "total_customers": Customer.objects.count(),
-        "total_branches": branches.count() if selected_category else Branch.objects.count(),
+        "total_customers": (
+            Customer.objects.filter(
+                pk__in=allowed_branches.values_list("customer_id", flat=True)
+            ).distinct().count()
+        ),
+        "total_branches": branches.count(),
         "total_products": products_qs.count(),
         "period_sales_count": period_sales_count,
         "period_sales_total": period_sales_total,

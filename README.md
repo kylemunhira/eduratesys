@@ -151,7 +151,8 @@ Point `SalesQuery` at your real POS tables/columns before production use.
 
 ## Phase 1 features
 
-- Auth (Django) + Admin/Supplier groups
+- Auth (Django) + roles: IT, Business Head, Commercial Manager, Sales Admin, Sales
+- IT creates users; Sales Admin / Sales are limited to assigned branches
 - Customers, branches (API keys), products
 - Dispatch draft → approve → branch stock increase
 - Sales ingest API with dedupe + sync logs + audit log
