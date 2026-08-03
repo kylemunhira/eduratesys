@@ -12,34 +12,78 @@
 
 <form method="get" class="row g-2 align-items-end mb-3 period-filter">
   {% include "includes/period_fields.html" %}
+  {% if selected_category %}
+  <input type="hidden" name="category" value="{{ selected_category }}">
+  {% endif %}
   <div class="col-auto">
     <button class="btn btn-sm btn-outline-dark" type="submit">Apply</button>
   </div>
 </form>
 
+{% if selected_category %}
+<div class="category-filter-banner mb-3">
+  <span>Showing data for <strong>{{ selected_category }}</strong></span>
+  <a class="btn btn-sm btn-outline-dark" href="?period={{ period }}&date_from={{ date_from }}&date_to={{ date_to }}">Clear category</a>
+</div>
+{% endif %}
+
 <div class="stat-grid">
-  <div class="stat"><div class="label">Customers</div><div class="value">{{ total_customers }}</div></div>
+  {% if not is_admin %}<div class="stat" hidden><div class="label">Customers</div><div class="value">{{ total_customers }}</div></div>{% endif %}
   <div class="stat"><div class="label">Branches</div><div class="value">{{ total_branches }}</div></div>
   <div class="stat"><div class="label">Products</div><div class="value">{{ total_products }}</div></div>
-  <div class="stat"><div class="label">Sales <span class="stat-sub">{{ period_label }}</span></div><div class="value">{{ period_sales_count }}</div></div>
-  <div class="stat"><div class="label">Total <span class="stat-sub">{{ period_label }}</span></div><div class="value">{{ period_sales_total }}</div></div>
+  <div class="stat"><div class="label">Sales Categories <span class="stat-sub">{{ period_label }}</span></div><div class="value">{{ period_sales_count }}</div></div>
+  <div class="stat"><div class="label">Total Sold <span class="stat-sub">{{ period_label }}</span></div><div class="value">{{ period_sales_total }}</div></div>
   <div class="stat"><div class="label">Inventory units</div><div class="value">{{ inventory_units }}</div></div>
 </div>
 
+<section class="card-panel category-sold-panel">
+  <h2 class="panel-title">Sold by category <span class="panel-sub">{{ period_label }}</span></h2>
+  <div class="stat-grid category-sold-grid">
+    <a
+      class="stat stat--category stat--category-all{% if not selected_category %} is-active{% endif %}"
+      href="?period={{ period }}&date_from={{ date_from }}&date_to={{ date_to }}"
+      title="Show all categories"
+    >
+      <div class="label">All</div>
+      <div class="value">{{ category_sold_total }}</div>
+      <div class="stat-foot">tons sold</div>
+    </a>
+    {% for row in category_sold %}
+    <a
+      class="stat stat--category{% if selected_category == row.category %} is-active{% endif %}"
+      href="?period={{ period }}&date_from={{ date_from }}&date_to={{ date_to }}&category={{ row.category|urlencode }}"
+      title="Filter dashboard to {{ row.category }}"
+    >
+      <div class="label">{{ row.category }}</div>
+      <div class="value">{{ row.tons_sold }}</div>
+      <div class="stat-foot">tons sold</div>
+    </a>
+    {% empty %}
+    {% endfor %}
+  </div>
+  {% if not category_sold %}
+  <p class="text-muted mb-0 mt-2">No category sales for this period.</p>
+  {% endif %}
+</section>
+
 <div class="dash-grid chart-row">
-  <section class="card-panel chart-panel">
+  <section class="card-panel chart-panel chart-panel--legend">
     <h2 class="panel-title">Fast moving stock <span class="panel-sub">{{ period_label }}</span></h2>
     {% if fast_moving_chart.values %}
-    <canvas id="fast-moving-chart" height="220"></canvas>
+    <div class="chart-wrap">
+      <canvas id="fast-moving-chart"></canvas>
+    </div>
     {% else %}
     <p class="text-muted mb-0">No sales data yet for this period.</p>
     {% endif %}
   </section>
 
-  <section class="card-panel chart-panel">
-    <h2 class="panel-title">Highest selling branches <span class="panel-sub">{{ period_label }}</span></h2>
+  <section class="card-panel chart-panel chart-panel--legend">
+    <h2 class="panel-title">Top selling branches <span class="panel-sub">{{ period_label }}</span></h2>
     {% if top_branches_chart.values %}
-    <canvas id="top-branches-chart" height="220"></canvas>
+    <div class="chart-wrap">
+      <canvas id="top-branches-chart"></canvas>
+    </div>
     {% else %}
     <p class="text-muted mb-0">No branch sales yet for this period.</p>
     {% endif %}
@@ -130,15 +174,31 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 (function () {
-  const muted = "#6b7a72";
-  const accent = "#1f6b4a";
-  const accentSoft = "rgba(31, 107, 74, 0.65)";
-  const signal = "#b45309";
-  const signalSoft = "rgba(180, 83, 9, 0.7)";
+  const muted = "#5a6b7d";
+
+  // Distinct hue per bar (products + branches)
+  const productPalette = [
+    { fill: "rgba(37, 99, 235, 0.85)", stroke: "#2563eb" },   // blue
+    { fill: "rgba(220, 38, 38, 0.85)", stroke: "#dc2626" },    // red
+    { fill: "rgba(5, 150, 105, 0.85)", stroke: "#059669" },    // green
+    { fill: "rgba(217, 119, 6, 0.85)", stroke: "#d97706" },    // amber
+    { fill: "rgba(124, 58, 237, 0.85)", stroke: "#7c3aed" },   // violet
+    { fill: "rgba(8, 145, 178, 0.85)", stroke: "#0891b2" },    // cyan
+    { fill: "rgba(219, 39, 119, 0.85)", stroke: "#db2777" },   // pink
+    { fill: "rgba(101, 163, 13, 0.85)", stroke: "#65a30d" },   // lime
+    { fill: "rgba(234, 88, 12, 0.85)", stroke: "#ea580c" },    // orange
+    { fill: "rgba(79, 70, 229, 0.85)", stroke: "#4f46e5" },    // indigo
+    { fill: "rgba(13, 148, 136, 0.85)", stroke: "#0d9488" },   // teal
+    { fill: "rgba(190, 24, 93, 0.85)", stroke: "#be185d" },    // rose
+  ];
 
   const baseOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: {
+      mode: "index",
+      intersect: false,
+    },
     plugins: {
       legend: { display: false },
     },
@@ -150,7 +210,7 @@
       y: {
         beginAtZero: true,
         ticks: { color: muted, font: { size: 11 } },
-        grid: { color: "rgba(197, 209, 201, 0.6)" },
+        grid: { color: "rgba(208, 216, 228, 0.6)" },
       },
     },
   };
@@ -158,6 +218,9 @@
   const fastEl = document.getElementById("fast-moving-chart");
   if (fastEl) {
     const fastData = JSON.parse(document.getElementById("fast-moving-chart-data").textContent);
+    const fills = fastData.labels.map((_, i) => productPalette[i % productPalette.length].fill);
+    const strokes = fastData.labels.map((_, i) => productPalette[i % productPalette.length].stroke);
+
     new Chart(fastEl, {
       type: "bar",
       data: {
@@ -165,16 +228,48 @@
         datasets: [{
           label: "Units sold",
           data: fastData.values,
-          backgroundColor: accentSoft,
-          borderColor: accent,
+          backgroundColor: fills,
+          borderColor: strokes,
           borderWidth: 1,
           borderRadius: 4,
         }],
       },
       options: {
         ...baseOptions,
+        plugins: {
+          legend: {
+            display: true,
+            position: "bottom",
+            align: "start",
+            labels: {
+              boxWidth: 12,
+              boxHeight: 12,
+              padding: 10,
+              color: muted,
+              font: { size: 11 },
+              generateLabels(chart) {
+                const labels = chart.data.labels || [];
+                const ds = chart.data.datasets[0] || {};
+                const bg = ds.backgroundColor || [];
+                const bd = ds.borderColor || [];
+                return labels.map((text, i) => ({
+                  text,
+                  fillStyle: Array.isArray(bg) ? bg[i] : bg,
+                  strokeStyle: Array.isArray(bd) ? bd[i] : bd,
+                  lineWidth: 1,
+                  hidden: false,
+                  index: i,
+                }));
+              },
+            },
+          },
+        },
         scales: {
           ...baseOptions.scales,
+          x: {
+            ...baseOptions.scales.x,
+            ticks: { display: false },
+          },
           y: {
             ...baseOptions.scales.y,
             ticks: {
@@ -190,6 +285,9 @@
   const branchEl = document.getElementById("top-branches-chart");
   if (branchEl) {
     const branchData = JSON.parse(document.getElementById("top-branches-chart-data").textContent);
+    const branchFills = branchData.labels.map((_, i) => productPalette[i % productPalette.length].fill);
+    const branchStrokes = branchData.labels.map((_, i) => productPalette[i % productPalette.length].stroke);
+
     new Chart(branchEl, {
       type: "bar",
       data: {
@@ -197,16 +295,48 @@
         datasets: [{
           label: "Revenue",
           data: branchData.values,
-          backgroundColor: signalSoft,
-          borderColor: signal,
+          backgroundColor: branchFills,
+          borderColor: branchStrokes,
           borderWidth: 1,
           borderRadius: 4,
         }],
       },
       options: {
         ...baseOptions,
+        plugins: {
+          legend: {
+            display: true,
+            position: "bottom",
+            align: "start",
+            labels: {
+              boxWidth: 12,
+              boxHeight: 12,
+              padding: 10,
+              color: muted,
+              font: { size: 11 },
+              generateLabels(chart) {
+                const labels = chart.data.labels || [];
+                const ds = chart.data.datasets[0] || {};
+                const bg = ds.backgroundColor || [];
+                const bd = ds.borderColor || [];
+                return labels.map((text, i) => ({
+                  text,
+                  fillStyle: Array.isArray(bg) ? bg[i] : bg,
+                  strokeStyle: Array.isArray(bd) ? bd[i] : bd,
+                  lineWidth: 1,
+                  hidden: false,
+                  index: i,
+                }));
+              },
+            },
+          },
+        },
         scales: {
           ...baseOptions.scales,
+          x: {
+            ...baseOptions.scales.x,
+            ticks: { display: false },
+          },
           y: {
             ...baseOptions.scales.y,
             ticks: {

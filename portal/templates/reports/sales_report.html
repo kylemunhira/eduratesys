@@ -1,36 +1,200 @@
 {% extends "base.html" %}
 {% block title %}Sales report{% endblock %}
 {% block content %}
-<div class="topbar"><h1 class="page-title">Sales report</h1></div>
+<div class="topbar">
+  <div>
+    <p class="page-kicker">Reports</p>
+    <h1 class="page-title">Sales report</h1>
+    <p class="page-lead">Product quantities sold for the period (combined across receipts), VastAfrica layout.</p>
+  </div>
+</div>
 <div class="card-panel">
   <form method="get" class="row g-2 align-items-end mb-3">
+    <input type="hidden" name="view" value="{{ view }}">
     {% include "includes/period_fields.html" %}
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-0">Branch</label>
+      <select name="branch" class="form-select form-select-sm">
+        <option value="">All branches</option>
+        {% for b in branches %}
+          <option value="{{ b.pk }}" {% if selected_branch == b.pk|stringformat:"s" %}selected{% endif %}>{{ b.customer.name }} / {{ b.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <div class="col-auto">
       <button class="btn btn-sm btn-outline-dark" type="submit">Apply</button>
     </div>
   </form>
-  <table class="table table-sm mb-0">
-    <thead><tr><th>External ID</th><th>Customer</th><th>Branch</th><th>Sold at</th><th>Items sold</th><th>Total</th></tr></thead>
-    <tbody>
-    {% for s in sales %}
-      <tr>
-        <td class="mono">{{ s.external_sale_id }}</td>
-        <td>{{ s.branch.customer.name }}</td>
-        <td>{{ s.branch.name }}</td>
-        <td>{{ s.sold_at }}</td>
-        <td class="small">
-          {% for i in s.items.all %}
-            {{ i.product.name }} <span class="mono text-muted">({{ i.product.code }})</span> ×{{ i.quantity }} @ {{ i.unit_price }}{% if not forloop.last %}<br>{% endif %}
-          {% empty %}
-            <span class="text-muted">No matched products</span>
-          {% endfor %}
-        </td>
-        <td>{{ s.total_amount }}</td>
-      </tr>
-    {% empty %}
-      <tr><td colspan="6" class="text-muted">No sales for this period.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+
+  {% include "includes/report_actions.html" with export_url="export_sales" %}
+
+  <div class="sales-report-header mb-3">
+    <div class="sales-report-title">Inventory Transactions</div>
+    <div class="sales-report-company">{{ company_name }}</div>
+    <div class="sales-report-meta">
+      <span>Date From: {{ date_from_display|date:"j/n/Y" }}</span>
+      <span>Date To: {{ date_to_display|date:"j/n/Y" }}</span>
+      <span>Period: {{ period_label }}</span>
+    </div>
+  </div>
+
+  <ul class="nav nav-tabs sales-report-tabs mb-3 no-print">
+    <li class="nav-item">
+      <a class="nav-link{% if view == 'raw' %} active{% endif %}"
+         href="?view=raw&period={{ period }}&date_from={{ date_from }}&date_to={{ date_to }}&branch={{ selected_branch }}">Raw Data</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link{% if view == 'category' %} active{% endif %}"
+         href="?view=category&period={{ period }}&date_from={{ date_from }}&date_to={{ date_to }}&branch={{ selected_branch }}">By Category</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link{% if view == 'sku' %} active{% endif %}"
+         href="?view=sku&period={{ period }}&date_from={{ date_from }}&date_to={{ date_to }}&branch={{ selected_branch }}">By SKU</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link{% if view == 'branch' %} active{% endif %}"
+         href="?view=branch&period={{ period }}&date_from={{ date_from }}&date_to={{ date_to }}&branch={{ selected_branch }}">By Branch</a>
+    </li>
+  </ul>
+
+  {% if view == "raw" %}
+  <p class="small text-muted mb-2">
+    {{ raw_rows|length }} line(s) · Total tons: <strong>{{ totals.tons }}</strong>
+    · Qty: <strong>{{ totals.quantity }}</strong>
+    · Amount: <strong>{{ totals.amount }}</strong>
+  </p>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 sales-raw-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Item Description</th>
+          <th>Group</th>
+          <th>Sale Reporting Group</th>
+          <th>Account</th>
+          <th>Customer/ Supplier Name</th>
+          <th class="text-end">Tons</th>
+          <th class="text-end">Quantity</th>
+          <th class="text-end">Amount</th>
+          <th class="text-end">Unit Price</th>
+          <th>Branch</th>
+          <th class="text-end">PSize</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in raw_rows %}
+        <tr>
+          <td>{{ r.date|date:"j/n/Y" }}</td>
+          <td>{{ r.item_description }}</td>
+          <td>{{ r.group }}</td>
+          <td>{{ r.sale_reporting_group }}</td>
+          <td class="mono">{{ r.account }}</td>
+          <td>{{ r.customer_name }}</td>
+          <td class="text-end">{% if r.tons is not None %}{{ r.tons }}{% else %}—{% endif %}</td>
+          <td class="text-end">{{ r.quantity }}</td>
+          <td class="text-end">{{ r.amount }}</td>
+          <td class="text-end">{{ r.unit_price }}</td>
+          <td>{{ r.branch }}</td>
+          <td class="text-end">{% if r.psize is not None %}{{ r.psize }}{% else %}—{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="12" class="text-muted">No sales for this period.</td></tr>
+      {% endfor %}
+      </tbody>
+      {% if raw_rows %}
+      <tfoot>
+        <tr>
+          <td colspan="6" class="text-end fw-semibold">Grand Total</td>
+          <td class="text-end fw-semibold">{{ totals.tons }}</td>
+          <td class="text-end fw-semibold">{{ totals.quantity }}</td>
+          <td class="text-end fw-semibold">{{ totals.amount }}</td>
+          <td colspan="3"></td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+
+  {% elif view == "category" %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead>
+        <tr><th>Product Category</th><th class="text-end">Volume</th></tr>
+      </thead>
+      <tbody>
+      {% for r in by_category %}
+        <tr>
+          <td>{{ r.label }}</td>
+          <td class="text-end">{{ r.volume }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="2" class="text-muted">No sales for this period.</td></tr>
+      {% endfor %}
+      </tbody>
+      {% if by_category %}
+      <tfoot>
+        <tr>
+          <td class="fw-semibold">Grand Total</td>
+          <td class="text-end fw-semibold">{{ totals.tons }}</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+
+  {% elif view == "sku" %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead>
+        <tr><th>Product Name</th><th class="text-end">Volume</th></tr>
+      </thead>
+      <tbody>
+      {% for r in by_sku %}
+        <tr>
+          <td>{{ r.label }}</td>
+          <td class="text-end">{{ r.volume }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="2" class="text-muted">No sales for this period.</td></tr>
+      {% endfor %}
+      </tbody>
+      {% if by_sku %}
+      <tfoot>
+        <tr>
+          <td class="fw-semibold">Grand Total</td>
+          <td class="text-end fw-semibold">{{ totals.tons }}</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+
+  {% else %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead>
+        <tr><th>Branch Sales</th><th class="text-end">Volume</th></tr>
+      </thead>
+      <tbody>
+      {% for r in by_branch %}
+        <tr>
+          <td>{{ r.label }}</td>
+          <td class="text-end">{{ r.volume }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="2" class="text-muted">No sales for this period.</td></tr>
+      {% endfor %}
+      </tbody>
+      {% if by_branch %}
+      <tfoot>
+        <tr>
+          <td class="fw-semibold">Grand Total</td>
+          <td class="text-end fw-semibold">{{ totals.tons }}</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

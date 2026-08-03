@@ -1,13 +1,20 @@
+import re
 from collections import defaultdict
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum
 from django.shortcuts import render
+from django.utils import timezone
 
 from catalog.models import Branch, Customer, Product
 from inventory.models import BranchStock, Dispatch, DispatchItem, StockLoss
 from reports.period import parse_period_bounds
-from sales.models import Sale, SaleItem, SyncLog
+from reports.pos_db import PosDbError, fetch_grv_purchase_lines
+from sales.models import SaleItem, SyncLog
+
+_PACK_SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*kg\b", re.IGNORECASE)
+COMPANY_NAME = "EDURATE INVESTMENTS (PVT) LTD"
 
 
 def _period_context(bounds):
@@ -17,6 +24,174 @@ def _period_context(bounds):
         "date_to": bounds["date_to_iso"],
         "period_label": bounds["period_label"],
     }
+
+
+def pack_size_kg(product_name: str) -> Decimal | None:
+    """Extract pack size in kg from a product name (e.g. '… 25kg')."""
+    match = _PACK_SIZE_RE.search(product_name or "")
+    if not match:
+        return None
+    return Decimal(match.group(1))
+
+
+def _tons(quantity, psize: Decimal | None) -> Decimal | None:
+    if psize is None:
+        return None
+    return (Decimal(quantity) * psize / Decimal(1000)).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+
+def _normalize_category(value):
+    return (value or "").strip() or "Uncategorized"
+
+
+def _local_date(dt):
+    if timezone.is_aware(dt):
+        return timezone.localtime(dt).date()
+    return dt.date() if hasattr(dt, "date") else dt
+
+
+def sales_report_data(request):
+    """
+    Build VastAfrica-style sales report rows and volume summaries.
+
+    Raw rows are aggregated by product × customer × branch × unit price
+    (not one line per receipt), so qty/tons/amount are totals sold.
+
+    Returns (bounds, raw_rows, by_category, by_sku, by_branch, totals).
+    Volume on summary sheets is tons (qty × pack kg / 1000).
+    """
+    bounds = parse_period_bounds(request)
+    items = (
+        SaleItem.objects.select_related(
+            "product",
+            "sale",
+            "sale__branch",
+            "sale__branch__customer",
+        )
+        .filter(
+            sale__sold_at__gte=bounds["start_dt"],
+            sale__sold_at__lt=bounds["end_dt"],
+        )
+        .order_by("sale__sold_at", "sale__external_sale_id", "pk")
+    )
+    branch_id = request.GET.get("branch") or ""
+    if branch_id.isdigit():
+        items = items.filter(sale__branch_id=int(branch_id))
+
+    # Key: (product_id, customer_id, branch_id, unit_price) → combined qty sold
+    aggregated = {}
+    by_category = defaultdict(lambda: Decimal("0"))
+    by_sku = defaultdict(lambda: Decimal("0"))
+    by_branch = defaultdict(lambda: Decimal("0"))
+    total_tons = Decimal("0")
+    total_qty = 0
+    total_amount = Decimal("0")
+
+    for item in items:
+        product = item.product
+        sale = item.sale
+        branch = sale.branch
+        customer = branch.customer
+        psize = pack_size_kg(product.name)
+        tons = _tons(item.quantity, psize)
+        unit_price = Decimal(item.unit_price)
+        amount = (Decimal(item.quantity) * unit_price).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        reporting_group = _normalize_category(product.category)
+        sold_date = _local_date(sale.sold_at)
+        key = (product.pk, customer.pk, branch.pk, unit_price)
+
+        bucket = aggregated.get(key)
+        if bucket is None:
+            aggregated[key] = {
+                "date": sold_date,
+                "item_description": product.name,
+                "group": "Stockfeeds Finished Product",
+                "sale_reporting_group": reporting_group,
+                "account": "",
+                "customer_name": customer.name,
+                "tons": tons if tons is not None else Decimal("0"),
+                "has_tons": tons is not None,
+                "quantity": item.quantity,
+                "amount": amount,
+                "unit_price": unit_price,
+                "branch": branch.name,
+                "psize": psize,
+            }
+        else:
+            bucket["quantity"] += item.quantity
+            bucket["amount"] += amount
+            if tons is not None:
+                bucket["tons"] += tons
+                bucket["has_tons"] = True
+            if sold_date < bucket["date"]:
+                bucket["date"] = sold_date
+
+        volume = tons if tons is not None else Decimal("0")
+        by_category[reporting_group] += volume
+        by_sku[product.name] += volume
+        by_branch[branch.name] += volume
+        total_tons += volume
+        total_qty += item.quantity
+        total_amount += amount
+
+    raw_rows = []
+    for bucket in aggregated.values():
+        tons = (
+            bucket["tons"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if bucket["has_tons"]
+            else None
+        )
+        raw_rows.append(
+            {
+                "date": bucket["date"],
+                "item_description": bucket["item_description"],
+                "group": bucket["group"],
+                "sale_reporting_group": bucket["sale_reporting_group"],
+                "account": bucket["account"],
+                "customer_name": bucket["customer_name"],
+                "tons": tons,
+                "quantity": bucket["quantity"],
+                "amount": bucket["amount"].quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                ),
+                "unit_price": bucket["unit_price"],
+                "branch": bucket["branch"],
+                "psize": bucket["psize"],
+            }
+        )
+
+    raw_rows.sort(
+        key=lambda r: (
+            r["date"] or timezone.localdate(),
+            r["customer_name"].lower(),
+            r["branch"].lower(),
+            r["item_description"].lower(),
+        )
+    )
+
+    def _summary(mapping):
+        return [
+            {"label": label, "volume": vol}
+            for label, vol in sorted(mapping.items(), key=lambda x: x[0].lower())
+        ]
+
+    totals = {
+        "tons": total_tons,
+        "quantity": total_qty,
+        "amount": total_amount,
+    }
+    return (
+        bounds,
+        raw_rows,
+        _summary(by_category),
+        _summary(by_sku),
+        _summary(by_branch),
+        totals,
+    )
 
 
 @login_required
@@ -51,32 +226,73 @@ def dispatch_report(request):
 
 @login_required
 def sales_report(request):
-    bounds = parse_period_bounds(request)
-    sales = (
-        Sale.objects.select_related("branch", "branch__customer")
-        .prefetch_related("items__product")
-        .filter(sold_at__gte=bounds["start_dt"], sold_at__lt=bounds["end_dt"])
+    bounds, raw_rows, by_category, by_sku, by_branch, totals = sales_report_data(
+        request
     )
+    view = (request.GET.get("view") or "raw").lower()
+    if view not in ("raw", "category", "sku", "branch"):
+        view = "raw"
+    branch_id = request.GET.get("branch") or ""
     return render(
         request,
         "reports/sales_report.html",
         {
-            "sales": sales,
+            "company_name": COMPANY_NAME,
+            "view": view,
+            "raw_rows": raw_rows,
+            "by_category": by_category,
+            "by_sku": by_sku,
+            "by_branch": by_branch,
+            "totals": totals,
+            "branches": Branch.objects.select_related("customer"),
+            "selected_branch": branch_id,
+            "date_from_display": bounds["date_from"],
+            "date_to_display": bounds["date_to"],
             **_period_context(bounds),
         },
     )
 
 
-@login_required
-def customer_stock_summary(request):
-    rows = (
+def customer_stock_summary_data():
+    """Current stock units and all-time sold tonnage per customer."""
+    stock_rows = list(
         BranchStock.objects.values(
             "branch__customer__name", "branch__customer_id"
         )
         .annotate(total_qty=Sum("quantity"))
         .order_by("branch__customer__name")
     )
-    return render(request, "reports/customer_stock.html", {"rows": rows})
+
+    sold_by_customer = defaultdict(lambda: Decimal("0"))
+    sale_aggs = SaleItem.objects.values(
+        "sale__branch__customer_id",
+        "product__name",
+    ).annotate(qty=Sum("quantity"))
+    for row in sale_aggs:
+        tons = _tons(row["qty"], pack_size_kg(row["product__name"]))
+        if tons is not None:
+            sold_by_customer[row["sale__branch__customer_id"]] += tons
+
+    return [
+        {
+            "customer_name": r["branch__customer__name"],
+            "customer_id": r["branch__customer_id"],
+            "total_qty": r["total_qty"],
+            "total_tons_sold": sold_by_customer.get(
+                r["branch__customer_id"], Decimal("0")
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        }
+        for r in stock_rows
+    ]
+
+
+@login_required
+def customer_stock_summary(request):
+    return render(
+        request,
+        "reports/customer_stock.html",
+        {"rows": customer_stock_summary_data()},
+    )
 
 
 @login_required
@@ -153,11 +369,21 @@ def stock_movement(request):
             for row in qs.values(*values_fields).annotate(total=Sum(qty_field))
         }
 
-    dispatched_before = _bucket(
-        dispatch_base.filter(dispatch__approved_at__lt=start_dt), d_key
-    )
-    sold_before = _bucket(sale_base.filter(sale__sold_at__lt=start_dt), s_key)
-    loss_before = _bucket(loss_base.filter(recorded_at__lt=start_dt), l_key)
+    # Opening stock from BranchStock (matches Stock Balance report)
+    stock_qs = BranchStock.objects.all()
+    if customer_id.isdigit():
+        stock_qs = stock_qs.filter(branch__customer_id=int(customer_id))
+    if branch_id.isdigit():
+        stock_qs = stock_qs.filter(branch_id=int(branch_id))
+
+    if group_by == "customer":
+        stock_balance = _bucket(
+            stock_qs, ("branch__customer_id", "product_id")
+        )
+    else:
+        stock_balance = _bucket(
+            stock_qs, ("branch__customer_id", "branch_id", "product_id")
+        )
 
     dispatched_in = _bucket(
         dispatch_base.filter(
@@ -185,22 +411,13 @@ def stock_movement(request):
     )
 
     all_keys = set()
-    for mapping in (
-        dispatched_before,
-        sold_before,
-        loss_before,
-        dispatched_in,
-        sold_in,
-        loss_in,
-    ):
-        all_keys.update(mapping)
+    all_keys.update(stock_balance)
+    all_keys.update(dispatched_in)
+    all_keys.update(sold_in)
+    all_keys.update(loss_in)
 
     for key in all_keys:
-        opening = (
-            dispatched_before.get(key, 0)
-            - sold_before.get(key, 0)
-            - loss_before.get(key, 0)
-        )
+        opening = stock_balance.get(key, 0)
         dispatched = dispatched_in.get(key, 0)
         sold = sold_in.get(key, 0)
         shrinkage = loss_in.get(key, 0)
@@ -268,6 +485,241 @@ def stock_movement(request):
             "branches": branches,
             "selected_customer": customer_id,
             "selected_branch": branch_id,
+            **_period_context(bounds),
+        },
+    )
+
+
+def dispatch_warehouse_data(request):
+    """
+    Approved dispatch quantities for all branches, grouped by product category.
+    Returns (bounds, groups, grand_total).
+    """
+    bounds = parse_period_bounds(request)
+    start_dt = bounds["start_dt"]
+    end_dt = bounds["end_dt"]
+
+    items = (
+        DispatchItem.objects.filter(
+            dispatch__status=Dispatch.Status.APPROVED,
+            dispatch__approved_at__isnull=False,
+            dispatch__approved_at__gte=start_dt,
+            dispatch__approved_at__lt=end_dt,
+        )
+        .values(
+            "product__category",
+            "product__code",
+            "product__name",
+            "dispatch__customer__name",
+            "dispatch__branch__name",
+        )
+        .annotate(quantity=Sum("quantity"))
+        .order_by(
+            "product__category",
+            "product__code",
+            "dispatch__customer__name",
+            "dispatch__branch__name",
+        )
+    )
+
+    grouped = defaultdict(lambda: {"rows": [], "total_qty": 0})
+    for row in items:
+        category = _normalize_category(row["product__category"])
+        qty = row["quantity"] or 0
+        grouped[category]["rows"].append(
+            {
+                "code": row["product__code"],
+                "name": row["product__name"],
+                "customer": row["dispatch__customer__name"],
+                "branch": row["dispatch__branch__name"],
+                "quantity": qty,
+            }
+        )
+        grouped[category]["total_qty"] += qty
+
+    groups = [
+        {
+            "category": category,
+            "rows": data["rows"],
+            "total_qty": data["total_qty"],
+        }
+        for category, data in sorted(
+            grouped.items(), key=lambda item: item[0].lower()
+        )
+    ]
+    grand_total = sum(g["total_qty"] for g in groups)
+    return bounds, groups, grand_total
+
+
+@login_required
+def dispatch_warehouse_report(request):
+    bounds, groups, grand_total = dispatch_warehouse_data(request)
+    return render(
+        request,
+        "reports/dispatch_warehouse.html",
+        {
+            "groups": groups,
+            "grand_total": grand_total,
+            **_period_context(bounds),
+        },
+    )
+
+
+def _sold_tons_by_customer(start_dt, end_dt):
+    """Portal sold tonnage per customer name for [start_dt, end_dt)."""
+    sold = defaultdict(lambda: Decimal("0"))
+    display_names = {}
+    sale_aggs = (
+        SaleItem.objects.filter(
+            sale__sold_at__gte=start_dt,
+            sale__sold_at__lt=end_dt,
+        )
+        .values("sale__branch__customer__name", "product__name")
+        .annotate(qty=Sum("quantity"))
+    )
+    for row in sale_aggs:
+        name = row["sale__branch__customer__name"] or "Unknown"
+        key = name.casefold()
+        display_names[key] = name
+        tons = _tons(row["qty"], pack_size_kg(row["product__name"]))
+        if tons is not None:
+            sold[key] += tons
+    return sold, display_names
+
+
+def customer_tonnage_data(request):
+    """
+    Purchased tonnage (POS GRV) vs sold tonnage (portal sales) per customer.
+
+    Purchased tons = QuantityTotalKG/1000 when POS recorded kg, otherwise
+    qty × pack kg (from item name) / 1000.
+    Sold tons use the same pack-size formula against portal SaleItem rows.
+    Rows are merged by case-insensitive customer / GRV party name.
+    """
+    bounds = parse_period_bounds(request)
+    try:
+        lines = fetch_grv_purchase_lines(bounds["start_dt"], bounds["end_dt"])
+        error = None
+    except PosDbError as exc:
+        lines = []
+        error = str(exc)
+
+    by_customer = defaultdict(
+        lambda: {
+            "customer_name": "",
+            "quantity": Decimal("0"),
+            "purchased_tons": Decimal("0"),
+            "sold_tons": Decimal("0"),
+            "amount": Decimal("0"),
+            "grv_ids": set(),
+            "lines": 0,
+        }
+    )
+
+    for line in lines:
+        name = line["customer_name"] or "Unknown"
+        key = name.casefold()
+        qty = Decimal(str(line["quantity"] or 0))
+        qty_kg = Decimal(str(line["quantity_kg"] or 0))
+        unit_price = Decimal(str(line["unit_price"] or 0))
+        amount = (qty * unit_price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        if qty_kg > 0:
+            tons = (qty_kg / Decimal(1000)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        else:
+            tons = _tons(qty, pack_size_kg(line["item_name"])) or Decimal("0")
+
+        bucket = by_customer[key]
+        bucket["customer_name"] = name
+        bucket["quantity"] += qty
+        bucket["purchased_tons"] += tons
+        bucket["amount"] += amount
+        bucket["grv_ids"].add(line["grv_id"])
+        bucket["lines"] += 1
+
+    sold_by_key, sold_names = _sold_tons_by_customer(
+        bounds["start_dt"], bounds["end_dt"]
+    )
+    for key, tons in sold_by_key.items():
+        bucket = by_customer[key]
+        if not bucket["customer_name"]:
+            bucket["customer_name"] = sold_names.get(key, key)
+        bucket["sold_tons"] = tons
+
+    rows = []
+    total_purchased = Decimal("0")
+    total_sold = Decimal("0")
+    total_qty = Decimal("0")
+    total_amount = Decimal("0")
+
+    for data in by_customer.values():
+        qty = data["quantity"]
+        purchased = data["purchased_tons"].quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        sold = data["sold_tons"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        amount = data["amount"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        rows.append(
+            {
+                "customer_name": data["customer_name"],
+                "quantity": qty.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                if qty % 1
+                else int(qty),
+                "purchased_tons": purchased,
+                "sold_tons": sold,
+                "variance_tons": (purchased - sold).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                ),
+                "amount": amount,
+                "grv_count": len(data["grv_ids"]),
+                "line_count": data["lines"],
+            }
+        )
+        total_purchased += purchased
+        total_sold += sold
+        total_qty += qty
+        total_amount += amount
+
+    rows.sort(
+        key=lambda r: (
+            -r["purchased_tons"],
+            -r["sold_tons"],
+            r["customer_name"].lower(),
+        )
+    )
+
+    totals = {
+        "purchased_tons": total_purchased.quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        ),
+        "sold_tons": total_sold.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        "variance_tons": (total_purchased - total_sold).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        ),
+        "quantity": total_qty.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if total_qty % 1
+        else int(total_qty),
+        "amount": total_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        "customers": len(rows),
+    }
+    return bounds, rows, totals, error
+
+
+@login_required
+def customer_tonnage_report(request):
+    bounds, rows, totals, error = customer_tonnage_data(request)
+    return render(
+        request,
+        "reports/customer_tonnage.html",
+        {
+            "rows": rows,
+            "totals": totals,
+            "error": error,
+            "company_name": COMPANY_NAME,
+            "date_from_display": bounds["date_from"],
+            "date_to_display": bounds["date_to"],
             **_period_context(bounds),
         },
     )

@@ -21,8 +21,31 @@
       {% endfor %}
       </tbody>
     </table>
+    <button type="button" class="btn btn-sm btn-outline-dark mb-3" id="add-item">+ Add item</button>
+    <br>
     <button class="btn btn-dark" type="submit">Save draft</button>
     <a class="btn btn-link" href="{% url 'dispatch_list' %}">Cancel</a>
   </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('add-item').addEventListener('click', function () {
+  const tbody = document.querySelector('table.table tbody');
+  const totalInput = document.getElementById('id_items-TOTAL_FORMS');
+  const idx = parseInt(totalInput.value);
+  const firstRow = tbody.querySelector('tr');
+  const newRow = firstRow.cloneNode(true);
+  newRow.querySelectorAll('input, select').forEach(el => {
+    el.name = el.name.replace(/-\d+-/, '-' + idx + '-');
+    el.id = el.id.replace(/-\d+-/, '-' + idx + '-');
+    if (el.tagName === 'SELECT') el.selectedIndex = 0;
+    else if (el.type === 'checkbox') el.checked = false;
+    else el.value = '';
+  });
+  tbody.appendChild(newRow);
+  totalInput.value = idx + 1;
+});
+</script>
 {% endblock %}

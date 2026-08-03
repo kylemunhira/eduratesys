@@ -9,6 +9,7 @@
       <button class="btn btn-sm btn-outline-dark" type="submit">Apply</button>
     </div>
   </form>
+  {% include "includes/report_actions.html" with export_url="export_sync" %}
   <h2 class="h6">Branches</h2>
   <table class="table table-sm">
     <thead><tr><th>Customer</th><th>Branch</th><th>Last sync</th><th>Online</th></tr></thead>

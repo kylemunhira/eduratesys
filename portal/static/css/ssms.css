@@ -1,22 +1,26 @@
 @import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Manrope:wght@400;500;600;700&display=swap");
 
 :root {
-  --ink: #18231c;
-  --ink-soft: #3d4a42;
-  --muted: #6b7a72;
-  --paper: #e8eee9;
-  --panel: #f7faf8;
-  --line: #c5d1c9;
-  --accent: #1f6b4a;
-  --accent-deep: #134832;
-  --signal: #b45309;
-  --signal-soft: #fff4e5;
-  --ok: #1f6b4a;
+  --ink: #0a1628;
+  --ink-soft: #2a3f57;
+  --muted: #5a6b7d;
+  --paper: #e8f1fa;
+  --panel: #ffffff;
+  --line: #e2e7ef;
+  --navy: #0a1628;
+  --navy-mid: #132d4a;
+  --navy-soft: #1e3a5f;
+  --accent: #c9a227;
+  --accent-deep: #a6861f;
+  --signal: #c9a227;
+  --signal-soft: #f8f1dc;
+  --ok: #1a5c45;
   --danger: #9f2d2d;
   --radius: 0.4rem;
   --font-display: "Bricolage Grotesque", "Arial Narrow", sans-serif;
   --font-body: "Manrope", "Segoe UI", sans-serif;
-  --shadow-soft: 0 1px 0 rgba(24, 35, 28, 0.06);
+  --shadow-soft: 0 1px 0 rgba(10, 22, 40, 0.06);
+  /* Brand mix: navy ~45% · white ~35% · gold ~20% */
 }
 
 * {
@@ -36,26 +40,19 @@ body {
   line-height: 1.5;
   background-color: var(--paper);
   background-image:
-    linear-gradient(160deg, rgba(31, 107, 74, 0.07), transparent 42%),
-    linear-gradient(340deg, rgba(180, 83, 9, 0.05), transparent 36%),
-    repeating-linear-gradient(
-      -18deg,
-      transparent,
-      transparent 11px,
-      rgba(24, 35, 28, 0.02) 11px,
-      rgba(24, 35, 28, 0.02) 12px
-    );
+    linear-gradient(160deg, rgba(70, 130, 180, 0.08), transparent 48%),
+    linear-gradient(340deg, rgba(120, 170, 210, 0.06), transparent 32%);
   background-attachment: fixed;
 }
 
 a {
-  color: var(--accent-deep);
+  color: var(--navy-mid);
   text-decoration: none;
   transition: color 0.15s ease;
 }
 
 a:hover {
-  color: var(--accent);
+  color: var(--accent-deep);
 }
 
 /* —— App shell —— */
@@ -72,10 +69,10 @@ a:hover {
   height: 100vh;
   overflow-y: auto;
   padding: 1.5rem 1.1rem 1.25rem;
-  border-right: 1px solid var(--line);
+  border-right: 1px solid rgba(201, 162, 39, 0.22);
   background:
-    linear-gradient(180deg, rgba(247, 250, 248, 0.96), rgba(232, 238, 233, 0.92));
-  backdrop-filter: blur(8px);
+    linear-gradient(180deg, var(--navy) 0%, var(--navy-mid) 100%);
+  color: #ffffff;
 }
 
 .brand-block {
@@ -90,7 +87,7 @@ a:hover {
   font-size: 2rem;
   letter-spacing: -0.03em;
   line-height: 1;
-  color: var(--ink);
+  color: #ffffff;
 }
 
 .brand span {
@@ -99,7 +96,7 @@ a:hover {
 
 .brand-sub {
   margin: 0.45rem 0 0;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.62);
   font-size: 0.78rem;
   font-weight: 500;
   letter-spacing: 0.04em;
@@ -108,7 +105,7 @@ a:hover {
 
 .nav-section {
   margin: 1.15rem 0.55rem 0.35rem;
-  color: var(--muted);
+  color: rgba(201, 162, 39, 0.85);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -123,7 +120,7 @@ a:hover {
   margin: 0.1rem 0;
   padding: 0.55rem 0.7rem;
   border-radius: var(--radius);
-  color: var(--ink-soft);
+  color: rgba(255, 255, 255, 0.82);
   font-weight: 560;
   text-decoration: none;
   transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
@@ -135,15 +132,15 @@ a:hover {
 }
 
 .sidebar .nav-link:hover {
-  background: rgba(31, 107, 74, 0.08);
-  color: var(--accent-deep);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
   text-decoration: none;
   transform: translateX(2px);
 }
 
 .sidebar .nav-link.active {
-  background: rgba(31, 107, 74, 0.12);
-  color: var(--accent-deep);
+  background: rgba(201, 162, 39, 0.16);
+  color: #ffffff;
   font-weight: 700;
 }
 
@@ -165,18 +162,19 @@ a:hover {
   cursor: pointer;
   font: inherit;
   text-align: left;
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .sidebar-foot {
   margin-top: 1.5rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .user-chip {
   display: block;
   margin: 0 0.55rem 0.5rem;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.55);
   font-size: 0.78rem;
 }
 
@@ -190,9 +188,35 @@ a:hover {
   justify-content: space-between;
   align-items: flex-end;
   gap: 1rem;
-  margin-bottom: 1.35rem;
-  padding-bottom: 0.9rem;
-  border-bottom: 1px solid var(--line);
+  margin: -1.5rem -1.75rem 1.35rem;
+  padding: 1.25rem 1.75rem 1.1rem;
+  border-bottom: 1px solid rgba(201, 162, 39, 0.22);
+  background: linear-gradient(180deg, var(--navy) 0%, var(--navy-mid) 100%);
+  color: #ffffff;
+}
+
+.topbar .page-kicker {
+  color: rgba(201, 162, 39, 0.85);
+}
+
+.topbar .page-title {
+  color: #ffffff;
+}
+
+.topbar .page-lead {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.topbar .btn-dark {
+  background: rgba(201, 162, 39, 0.2);
+  border-color: rgba(201, 162, 39, 0.55);
+  color: #ffffff;
+}
+
+.topbar .btn-dark:hover {
+  background: rgba(201, 162, 39, 0.35);
+  border-color: var(--accent);
+  color: #ffffff;
 }
 
 .page-kicker {
@@ -254,12 +278,16 @@ a:hover {
 }
 
 .chart-panel {
-  min-height: 300px;
+  min-height: 0;
 }
 
-.chart-panel canvas {
-  width: 100% !important;
-  height: 240px !important;
+.chart-wrap {
+  position: relative;
+  height: 240px;
+}
+
+.chart-panel--legend .chart-wrap {
+  height: 300px;
 }
 
 .stat-grid {
@@ -273,7 +301,7 @@ a:hover {
   padding: 0.85rem 0.95rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(247, 250, 248, 0.78);
+  background: rgba(255, 255, 255, 0.78);
   transition: border-color 0.2s ease, transform 0.2s ease;
   animation: rise 0.5s ease both;
 }
@@ -286,7 +314,7 @@ a:hover {
 .stat:nth-child(6) { animation-delay: 0.24s; }
 
 .stat:hover {
-  border-color: rgba(31, 107, 74, 0.45);
+  border-color: rgba(10, 22, 40, 0.28);
   transform: translateY(-2px);
 }
 
@@ -320,7 +348,153 @@ a:hover {
   padding: 0.85rem 1rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(247, 250, 248, 0.78);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.warehouse-category-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.warehouse-category tfoot td {
+  border-top: 1px solid var(--line);
+  background: rgba(10, 22, 40, 0.03);
+}
+
+.warehouse-grand-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(10, 22, 40, 0.04);
+  font-size: 0.95rem;
+}
+
+.warehouse-grand-total strong {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  color: var(--navy);
+}
+
+.sales-report-header {
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(10, 22, 40, 0.03);
+}
+
+.sales-report-title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.sales-report-company {
+  margin-top: 0.15rem;
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+
+.sales-report-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin-top: 0.55rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.sales-report-tabs .nav-link {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.sales-report-tabs .nav-link.active {
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.sales-raw-table {
+  font-size: 0.85rem;
+}
+
+.sales-raw-table th {
+  white-space: nowrap;
+}
+
+.category-filter-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  border-radius: var(--radius);
+  background: var(--signal-soft);
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.category-sold-grid {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  margin-bottom: 0;
+}
+
+.stat--category {
+  border-top: 3px solid var(--navy);
+  background: #ffffff;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.stat--category:hover {
+  border-color: rgba(10, 22, 40, 0.35);
+  border-top-color: var(--accent);
+  color: inherit;
+  text-decoration: none;
+}
+
+.stat--category.is-active {
+  border-color: rgba(201, 162, 39, 0.55);
+  border-top-color: var(--accent);
+  background: var(--signal-soft);
+  box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.25);
+}
+
+.stat--category-all {
+  border-top-color: var(--navy);
+}
+
+.stat--category-all.is-active {
+  border-top-color: var(--navy);
+  background: rgba(10, 22, 40, 0.06);
+  border-color: rgba(10, 22, 40, 0.2);
+  box-shadow: 0 0 0 1px rgba(10, 22, 40, 0.12);
+}
+
+.stat--category:nth-child(5n + 2),
+.stat--category:nth-child(5n + 7) {
+  border-top-color: var(--accent);
+}
+
+.stat--category .stat-foot {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .dash-grid {
@@ -349,17 +523,17 @@ a:hover {
 }
 
 .table > :not(caption) > * > * {
-  border-bottom-color: rgba(197, 209, 201, 0.7);
+  border-bottom-color: rgba(208, 216, 228, 0.7);
   vertical-align: middle;
 }
 
 .table-hover > tbody > tr:hover > * {
-  --bs-table-bg-state: rgba(31, 107, 74, 0.05);
+  --bs-table-bg-state: rgba(10, 22, 40, 0.04);
 }
 
 .badge-soft {
-  background: rgba(31, 107, 74, 0.12);
-  color: var(--accent-deep);
+  background: rgba(10, 22, 40, 0.08);
+  color: var(--navy);
   border-radius: 0.25rem;
   font-weight: 650;
 }
@@ -385,14 +559,18 @@ a:hover {
 
 .btn-dark,
 .btn-primary {
-  --bs-btn-bg: var(--accent);
-  --bs-btn-border-color: var(--accent);
-  --bs-btn-hover-bg: var(--accent-deep);
-  --bs-btn-hover-border-color: var(--accent-deep);
-  --bs-btn-active-bg: var(--accent-deep);
-  --bs-btn-active-border-color: var(--accent-deep);
-  background: var(--accent);
-  border-color: var(--accent);
+  --bs-btn-bg: var(--navy);
+  --bs-btn-border-color: var(--navy);
+  --bs-btn-hover-bg: var(--navy-mid);
+  --bs-btn-hover-border-color: var(--navy-mid);
+  --bs-btn-active-bg: var(--navy-mid);
+  --bs-btn-active-border-color: var(--navy-mid);
+  --bs-btn-color: #fff;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-active-color: #fff;
+  background: var(--navy);
+  border-color: var(--navy);
+  color: #fff;
 }
 
 .btn-outline-dark {
@@ -406,6 +584,22 @@ a:hover {
 .btn-outline-danger {
   --bs-btn-color: var(--danger);
   --bs-btn-border-color: rgba(159, 45, 45, 0.35);
+}
+
+.btn-outline-secondary {
+  --bs-btn-color: var(--ink-soft);
+  --bs-btn-border-color: var(--line);
+  --bs-btn-hover-bg: var(--navy);
+  --bs-btn-hover-border-color: var(--navy);
+  --bs-btn-hover-color: #fff;
+}
+
+.btn-outline-success {
+  --bs-btn-color: var(--accent-deep);
+  --bs-btn-border-color: rgba(201, 162, 39, 0.45);
+  --bs-btn-hover-bg: var(--accent);
+  --bs-btn-hover-border-color: var(--accent);
+  --bs-btn-hover-color: var(--navy);
 }
 
 .alert {
@@ -427,18 +621,18 @@ a:hover {
   flex-direction: column;
   justify-content: flex-end;
   padding: clamp(2rem, 5vw, 4rem);
-  color: #f4f7f5;
+  color: #ffffff;
   background:
-    linear-gradient(160deg, rgba(19, 72, 50, 0.88), rgba(24, 35, 28, 0.78)),
-    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.12), transparent 42%),
+    linear-gradient(160deg, rgba(10, 22, 40, 0.94), rgba(19, 45, 74, 0.88)),
+    radial-gradient(circle at 18% 18%, rgba(201, 162, 39, 0.14), transparent 40%),
     repeating-linear-gradient(
       45deg,
       transparent,
       transparent 14px,
-      rgba(255, 255, 255, 0.03) 14px,
-      rgba(255, 255, 255, 0.03) 15px
+      rgba(255, 255, 255, 0.025) 14px,
+      rgba(255, 255, 255, 0.025) 15px
     ),
-    #134832;
+    #0a1628;
   overflow: hidden;
 }
 
@@ -447,7 +641,7 @@ a:hover {
   position: absolute;
   inset: auto -10% -20% 35%;
   height: 70%;
-  background: radial-gradient(closest-side, rgba(180, 83, 9, 0.28), transparent 70%);
+  background: radial-gradient(closest-side, rgba(201, 162, 39, 0.22), transparent 70%);
   pointer-events: none;
   animation: drift 10s ease-in-out infinite alternate;
 }
@@ -465,7 +659,7 @@ a:hover {
 }
 
 .login-hero-brand span {
-  color: #9fd9bc;
+  color: var(--accent);
 }
 
 .login-hero-copy {
@@ -473,7 +667,7 @@ a:hover {
   z-index: 1;
   max-width: 28rem;
   margin: 1rem 0 0;
-  color: rgba(244, 247, 245, 0.82);
+  color: rgba(255, 255, 255, 0.82);
   font-size: 1.05rem;
   animation: rise 0.6s ease 0.1s both;
 }
@@ -482,7 +676,7 @@ a:hover {
   display: grid;
   place-items: center;
   padding: 2rem 1.25rem;
-  background: rgba(247, 250, 248, 0.72);
+  background: #ffffff;
 }
 
 .login-card {
@@ -540,7 +734,7 @@ a:hover {
     position: relative;
     height: auto;
     border-right: 0;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid rgba(201, 162, 39, 0.22);
   }
 
   .dash-grid {
@@ -568,5 +762,7 @@ a:hover {
   .topbar {
     flex-direction: column;
     align-items: flex-start;
+    margin: -1.1rem -1rem 1.35rem;
+    padding: 1.1rem 1rem 1rem;
   }
 }

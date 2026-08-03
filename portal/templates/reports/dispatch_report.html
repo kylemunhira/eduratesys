@@ -18,6 +18,7 @@
       <button class="btn btn-sm btn-outline-dark" type="submit">Apply</button>
     </div>
   </form>
+  {% include "includes/report_actions.html" with export_url="export_dispatches" %}
   <table class="table table-sm mb-0">
     <thead><tr><th>Ref</th><th>Customer</th><th>Branch</th><th>Status</th><th>Items</th></tr></thead>
     <tbody>

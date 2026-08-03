@@ -40,7 +40,7 @@ python manage.py runserver
 DATABASE_URL=postgres://ssms:ssms@localhost:5432/ssms
 ```
 
-`reset_portal` wipes all data and loads **VAST AFRICA** only (customer, 5 branches, 6 feed products).
+`reset_portal` wipes all data and loads **VAST AFRICA** (customer, 5 branches) plus products/categories from `Product Codes Stockfeed.xlsx`.
 
 **Docker alternative** (Linux containers): `docker compose up -d` uses port **5433** — set `DATABASE_URL=postgres://ssms:ssms@localhost:5433/ssms` in `portal/.env`.
 
@@ -51,6 +51,38 @@ Open http://127.0.0.1:8000/
 - **Login:** `admin` / `admin123` (change after first login)
 - **Admin:** http://127.0.0.1:8000/admin/
 - Branch API keys are on each branch detail page (local dev: Chivhu uses `ssms-local-chivhu-dev-key` after `seed_demo`)
+
+### Production (Waitress Windows service)
+
+On the portal server:
+
+1. Copy `build/portal` (or the `portal/` tree) onto the server.
+2. Create a venv and install deps: `pip install -r requirements.txt`
+3. Copy `.env.production.example` → `.env.production` and fill in real values.
+4. Download [NSSM](https://nssm.cc/download) and put `nssm.exe` on PATH (or pass `-NssmPath`).
+5. Install and start the service (run PowerShell **as Administrator**):
+
+```powershell
+.\scripts\install_portal_service.ps1 `
+  -PortalDir "C:\apps\ssms\portal" `
+  -PythonExe "C:\apps\ssms\.venv\Scripts\python.exe"
+```
+
+Manual smoke test (without a service):
+
+```powershell
+cd C:\apps\ssms\portal
+$env:APP_ENV = "production"
+..\..\.venv\Scripts\python.exe run_waitress.py
+```
+
+Uninstall:
+
+```powershell
+.\scripts\uninstall_portal_service.ps1
+```
+
+Service name: `SSMSPortal`. Logs go to `portal\logs\`. Default listen address: `0.0.0.0:2023` (override with `WAITRESS_*` in `.env.production` or the install script).
 
 ### Sales sync API
 

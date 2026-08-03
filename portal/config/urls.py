@@ -6,6 +6,7 @@ from accounts.views import dashboard
 from catalog import views as catalog_views
 from inventory import views as inventory_views
 from reports import views as report_views
+from reports import exports as report_exports
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -64,9 +65,36 @@ urlpatterns = [
         name="report_customer_stock",
     ),
     path(
+        "reports/customer-tonnage/",
+        report_views.customer_tonnage_report,
+        name="report_customer_tonnage",
+    ),
+    path(
         "reports/stock-movement/",
         report_views.stock_movement,
         name="report_stock_movement",
     ),
+    path(
+        "reports/dispatch-warehouse/",
+        report_views.dispatch_warehouse_report,
+        name="report_dispatch_warehouse",
+    ),
     path("reports/sync/", report_views.sync_report, name="report_sync"),
+    # Report exports
+    path("reports/stock/export/", report_exports.export_stock_balance, name="export_stock_balance"),
+    path("reports/dispatches/export/", report_exports.export_dispatches, name="export_dispatches"),
+    path("reports/sales/export/", report_exports.export_sales, name="export_sales"),
+    path("reports/customer-stock/export/", report_exports.export_customer_stock, name="export_customer_stock"),
+    path(
+        "reports/customer-tonnage/export/",
+        report_exports.export_customer_tonnage,
+        name="export_customer_tonnage",
+    ),
+    path("reports/stock-movement/export/", report_exports.export_stock_movement, name="export_stock_movement"),
+    path(
+        "reports/dispatch-warehouse/export/",
+        report_exports.export_dispatch_warehouse,
+        name="export_dispatch_warehouse",
+    ),
+    path("reports/sync/export/", report_exports.export_sync, name="export_sync"),
 ]

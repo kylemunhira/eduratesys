@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Customer tonnage{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <p class="page-kicker">Reports</p>
+    <h1 class="page-title">Customer tonnage</h1>
+    <p class="page-lead">Purchased tonnage (POS GRV) vs sold tonnage (portal sales) for comparison.</p>
+  </div>
+</div>
+
+<div class="card-panel">
+  <form method="get" class="row g-2 align-items-end mb-3">
+    {% include "includes/period_fields.html" %}
+    <div class="col-auto">
+      <button class="btn btn-sm btn-outline-dark" type="submit">Apply</button>
+    </div>
+  </form>
+
+  {% include "includes/report_actions.html" with export_url="export_customer_tonnage" %}
+
+  <div class="sales-report-header mb-3">
+    <div class="sales-report-title">Customer Tonnage Report</div>
+    <div class="sales-report-company">{{ company_name }}</div>
+    <div class="sales-report-meta">
+      <span>Date From: {{ date_from_display|date:"j/n/Y" }}</span>
+      <span>Date To: {{ date_to_display|date:"j/n/Y" }}</span>
+      <span>Period: {{ period_label }}</span>
+    </div>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-warning mb-3">{{ error }}</div>
+  {% endif %}
+
+  <p class="small text-muted mb-2">
+    {{ totals.customers }} customer(s)
+    · Purchased: <strong>{{ totals.purchased_tons }}</strong> t
+    · Sold: <strong>{{ totals.sold_tons }}</strong> t
+    · Variance: <strong>{{ totals.variance_tons }}</strong> t
+    · Qty: <strong>{{ totals.quantity }}</strong>
+    · Amount: <strong>{{ totals.amount }}</strong>
+  </p>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th class="text-end">Purchased units</th>
+          <th class="text-end">Purchased tons</th>
+          <th class="text-end">Sold tons</th>
+          <th class="text-end">Variance</th>
+          <th class="text-end">Amount</th>
+          <th class="text-end">GRVs</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td>{{ r.customer_name }}</td>
+          <td class="text-end">{{ r.quantity }}</td>
+          <td class="text-end">{{ r.purchased_tons }}</td>
+          <td class="text-end">{{ r.sold_tons }}</td>
+          <td class="text-end">{{ r.variance_tons }}</td>
+          <td class="text-end">{{ r.amount }}</td>
+          <td class="text-end">{{ r.grv_count }}</td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="7" class="text-muted">
+            {% if error %}No data (POS connection failed and no portal sales).{% else %}No purchases or sales for this period.{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+      {% if rows %}
+      <tfoot>
+        <tr class="fw-semibold">
+          <td>Grand total</td>
+          <td class="text-end">{{ totals.quantity }}</td>
+          <td class="text-end">{{ totals.purchased_tons }}</td>
+          <td class="text-end">{{ totals.sold_tons }}</td>
+          <td class="text-end">{{ totals.variance_tons }}</td>
+          <td class="text-end">{{ totals.amount }}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+</div>
+{% endblock %}

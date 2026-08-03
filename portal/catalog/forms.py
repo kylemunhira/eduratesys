@@ -67,7 +67,7 @@ DispatchItemFormSet = inlineformset_factory(
     Dispatch,
     DispatchItem,
     fields=("product", "quantity"),
-    extra=3,
+    extra=10,
     can_delete=True,
 )
 

@@ -11,21 +11,25 @@ from .forms import BranchForm, CustomerForm, ProductForm
 from .models import Branch, Customer, Product
 
 
-def _require_admin(request):
+def _require_admin(request, message="Only admins can perform this action."):
     if not user_is_admin(request.user):
-        messages.error(request, "Only admins can delete customers and branches.")
+        messages.error(request, message)
         return False
     return True
 
 
 @login_required
 def customer_list(request):
+    if not _require_admin(request, "Customers are only available to admins."):
+        return redirect("dashboard")
     customers = Customer.objects.all()
     return render(request, "catalog/customer_list.html", {"customers": customers})
 
 
 @login_required
 def customer_create(request):
+    if not _require_admin(request, "Customers are only available to admins."):
+        return redirect("dashboard")
     form = CustomerForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         form.save()
@@ -36,6 +40,8 @@ def customer_create(request):
 
 @login_required
 def customer_edit(request, pk):
+    if not _require_admin(request, "Customers are only available to admins."):
+        return redirect("dashboard")
     customer = get_object_or_404(Customer, pk=pk)
     form = CustomerForm(request.POST or None, instance=customer)
     if request.method == "POST" and form.is_valid():
@@ -51,6 +57,8 @@ def customer_edit(request, pk):
 
 @login_required
 def customer_detail(request, pk):
+    if not _require_admin(request, "Customers are only available to admins."):
+        return redirect("dashboard")
     customer = get_object_or_404(Customer.objects.prefetch_related("branches"), pk=pk)
     return render(request, "catalog/customer_detail.html", {"customer": customer})
 
@@ -58,8 +66,8 @@ def customer_detail(request, pk):
 @login_required
 @require_POST
 def customer_delete(request, pk):
-    if not _require_admin(request):
-        return redirect("customer_detail", pk=pk)
+    if not _require_admin(request, "Only admins can delete customers and branches."):
+        return redirect("dashboard")
     customer = get_object_or_404(Customer, pk=pk)
     name = customer.name
     try:

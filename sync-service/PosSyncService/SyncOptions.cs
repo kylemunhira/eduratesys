@@ -2,7 +2,7 @@ namespace PosSyncService;
 
 public sealed class SyncOptions
 {
-    public string ApiBaseUrl { get; set; } = "http://127.0.0.1:8000";
+    public string ApiBaseUrl { get; set; } = "http://127.0.0.1:8080";
     public string ApiKey { get; set; } = "";
     public string SqlConnectionString { get; set; } = "";
     public int PollIntervalSeconds { get; set; } = 30;

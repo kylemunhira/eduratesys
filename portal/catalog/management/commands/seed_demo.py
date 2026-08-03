@@ -1,8 +1,14 @@
+from pathlib import Path
+
 from django.contrib.auth.models import Group, User
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from accounts.roles import ADMIN_GROUP, SUPPLIER_GROUP, ensure_role_groups
+from catalog.management.commands.import_stockfeed import (
+    EXCEL_DEFAULT,
+    parse_products,
+)
 from catalog.models import Branch, Customer, Product
 
 CUSTOMER_NAME = "VAST AFRICA"
@@ -18,67 +24,12 @@ BRANCHES = [
     "Jerera",
 ]
 
-# From data/edurate.pdf — VAST AFRICA CHIVHU price list (supplier: edurate /sunrise)
-PRODUCTS = [
-    (
-        "8880029570102",
-        "8880029570102",
-        "Finisher Pellets Phase 3 25kg",
-        "Feed",
-        "bag",
-        16.50,
-        16.50,
-    ),
-    (
-        "8880029560103",
-        "8880029560103",
-        "Grower Pellets Phase 3 25kg",
-        "Feed",
-        "bag",
-        17.00,
-        16.50,
-    ),
-    (
-        "8880029550104",
-        "8880029550104",
-        "Starter Crumb Phase 3 25kg",
-        "Feed",
-        "bag",
-        17.00,
-        17.00,
-    ),
-    (
-        "8880029390106",
-        "8880029390106",
-        "Sunrise Grower Finisher 50kg 2 Phase",
-        "Feed",
-        "bag",
-        30.00,
-        30.00,
-    ),
-    (
-        "8880029380107",
-        "8880029380107",
-        "Sunrise Growfin 25kg",
-        "Feed",
-        "bag",
-        16.00,
-        15.50,
-    ),
-    (
-        "8880029370108",
-        "8880029370108",
-        "Sunrise Stagrow 25kg",
-        "Feed",
-        "bag",
-        16.00,
-        16.00,
-    ),
-]
-
 
 class Command(BaseCommand):
-    help = "Seed admin user and VAST AFRICA catalog (edurate /sunrise)."
+    help = (
+        "Seed admin user, VAST AFRICA customer/branches, and products "
+        "from Product Codes Stockfeed.xlsx."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -86,9 +37,23 @@ class Command(BaseCommand):
             default="admin123",
             help="Password for admin user (default: admin123)",
         )
+        parser.add_argument(
+            "--file",
+            type=str,
+            default=str(EXCEL_DEFAULT),
+            help="Path to Product Codes Stockfeed.xlsx",
+        )
 
     @transaction.atomic
     def handle(self, *args, **options):
+        excel_path = Path(options["file"])
+        if not excel_path.exists():
+            raise CommandError(
+                f"Excel file not found: {excel_path}\n"
+                "Place Product Codes Stockfeed.xlsx in portal/data/ "
+                "or pass --file."
+            )
+
         ensure_role_groups()
         admin_group = Group.objects.get(name=ADMIN_GROUP)
         supplier_group = Group.objects.get(name=SUPPLIER_GROUP)
@@ -115,7 +80,7 @@ class Command(BaseCommand):
                 "phone": "",
                 "email": "",
                 "address": "Zimbabwe",
-                "notes": "edurate /sunrise customer",
+                "notes": "VastAfrica stockfeed customer",
             },
         )
         if created:
@@ -132,21 +97,44 @@ class Command(BaseCommand):
             if branch_created:
                 self.stdout.write(f"  Created branch: {branch_name}")
 
-        for code, barcode, name, category, unit, sell, cost in PRODUCTS:
-            product, product_created = Product.objects.update_or_create(
-                code=code,
+        rows = parse_products(excel_path)
+        if not rows:
+            raise CommandError("No products parsed from spreadsheet.")
+
+        created_n = updated_n = 0
+        for row in rows:
+            _, was_created = Product.objects.update_or_create(
+                code=row["code"],
                 defaults={
-                    "barcode": barcode,
-                    "name": name,
-                    "category": category,
-                    "unit": unit,
-                    "selling_price": sell,
-                    "cost_price": cost,
+                    "name": row["name"],
+                    "category": row["category"],
+                    "barcode": row["code"],
+                    "unit": "bag",
+                    "selling_price": row["selling_price"],
+                    "cost_price": row["selling_price"],
                     "low_stock_threshold": 10,
+                    "status": Product.Status.ACTIVE,
                 },
             )
-            action = "Created" if product_created else "Updated"
-            self.stdout.write(f"  {action} product: {product.name} (${sell})")
+            if was_created:
+                created_n += 1
+            else:
+                updated_n += 1
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Products from stockfeed: {len(rows)} "
+                f"({created_n} created, {updated_n} updated)."
+            )
+        )
+        cats = (
+            Product.objects.order_by("category")
+            .values_list("category", flat=True)
+            .distinct()
+        )
+        for cat in cats:
+            n = Product.objects.filter(category=cat).count()
+            self.stdout.write(f"  {cat}: {n}")
 
         chivhu, _ = Branch.objects.update_or_create(
             customer=customer,

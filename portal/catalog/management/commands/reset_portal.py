@@ -3,7 +3,7 @@ from django.core.management.base import BaseCommand
 
 
 class Command(BaseCommand):
-    help = "Wipe all portal data and re-seed VAST AFRICA catalog."
+    help = "Wipe all portal data and re-seed VAST AFRICA + stockfeed catalog."
 
     def add_arguments(self, parser):
         parser.add_argument(

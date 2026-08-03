@@ -4,11 +4,17 @@ __pycache__/
 *.sqlite3
 db.sqlite3
 .env
+.env.test
+.env.production
 portal/staticfiles/
 portal/.env
+portal/.env.test
+portal/.env.production
 *.log
+portal/logs/
 .idea/
 .vscode/
 sync-service/**/bin/
 sync-service/**/obj/
 *.user
+build/

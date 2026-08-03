@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Dispatch warehouse{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <p class="page-kicker">Reports</p>
+    <h1 class="page-title">Dispatch warehouse</h1>
+    <p class="page-lead">Approved dispatches across all branches, grouped by product category.</p>
+  </div>
+</div>
+<div class="card-panel">
+  <form method="get" class="row g-2 align-items-end mb-3">
+    {% include "includes/period_fields.html" %}
+    <div class="col-auto">
+      <button class="btn btn-sm btn-outline-dark" type="submit">Apply</button>
+    </div>
+  </form>
+
+  {% include "includes/report_actions.html" with export_url="export_dispatch_warehouse" %}
+  <p class="small text-muted mb-3">
+    Includes approved dispatches only · Period: {{ period_label }} · Grand total: <strong>{{ grand_total }}</strong> units
+  </p>
+
+  {% for group in groups %}
+  <div class="warehouse-category mb-3">
+    <div class="warehouse-category-head">
+      <h2 class="panel-title mb-0">{{ group.category }}</h2>
+      <span class="badge badge-soft">{{ group.total_qty }} units</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Product</th>
+            <th>Customer</th>
+            <th>Branch</th>
+            <th class="text-end">Qty dispatched</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for r in group.rows %}
+          <tr>
+            <td class="mono">{{ r.code }}</td>
+            <td>{{ r.name }}</td>
+            <td>{{ r.customer }}</td>
+            <td>{{ r.branch }}</td>
+            <td class="text-end">{{ r.quantity }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4" class="text-end fw-semibold">Category total</td>
+            <td class="text-end fw-semibold">{{ group.total_qty }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+  {% empty %}
+  <p class="text-muted mb-0">No approved dispatches for this period.</p>
+  {% endfor %}
+
+  {% if groups %}
+  <div class="warehouse-grand-total">
+    <span>Grand total (all categories)</span>
+    <strong>{{ grand_total }}</strong>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

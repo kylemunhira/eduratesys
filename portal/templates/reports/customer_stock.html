@@ -3,16 +3,24 @@
 {% block content %}
 <div class="topbar"><h1 class="page-title">Customer stock summary</h1></div>
 <div class="card-panel">
+  {% include "includes/report_actions.html" with export_url="export_customer_stock" %}
   <table class="table table-sm mb-0">
-    <thead><tr><th>Customer</th><th>Total units</th></tr></thead>
+    <thead>
+      <tr>
+        <th>Customer</th>
+        <th class="text-end">Total units</th>
+        <th class="text-end">Total tons sold</th>
+      </tr>
+    </thead>
     <tbody>
     {% for r in rows %}
       <tr>
-        <td>{{ r.branch__customer__name }}</td>
-        <td>{{ r.total_qty }}</td>
+        <td>{{ r.customer_name }}</td>
+        <td class="text-end">{{ r.total_qty }}</td>
+        <td class="text-end">{{ r.total_tons_sold }}</td>
       </tr>
     {% empty %}
-      <tr><td colspan="2" class="text-muted">No stock.</td></tr>
+      <tr><td colspan="3" class="text-muted">No stock.</td></tr>
     {% endfor %}
     </tbody>
   </table>

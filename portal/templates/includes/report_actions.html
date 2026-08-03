@@ -1,0 +1,11 @@
+<div class="report-actions d-flex gap-2 mb-3 no-print">
+  <a href="{% url export_url %}?format=csv&{{ request.GET.urlencode }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-filetype-csv"></i> CSV
+  </a>
+  <a href="{% url export_url %}?format=xlsx&{{ request.GET.urlencode }}" class="btn btn-sm btn-outline-success">
+    <i class="bi bi-file-earmark-excel"></i> Excel
+  </a>
+  <button type="button" class="btn btn-sm btn-outline-dark" onclick="window.print()">
+    <i class="bi bi-printer"></i> Print
+  </button>
+</div>

@@ -3,6 +3,7 @@
 {% block content %}
 <div class="topbar"><h1 class="page-title">Stock balance report</h1></div>
 <div class="card-panel">
+  {% include "includes/report_actions.html" with export_url="export_stock_balance" %}
   <table class="table table-sm table-hover mb-0">
     <thead><tr><th>Customer</th><th>Branch</th><th>Code</th><th>Product</th><th>Qty</th></tr></thead>
     <tbody>
