@@ -1,11 +1,12 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 
 from accounts.forms import UserCreateForm, UserEditForm
 from accounts.models import log_audit
-from accounts.roles import require_user_manager
+from accounts.roles import SYSTEM_ADMIN_USERNAME, is_system_admin_user, require_user_manager
 
 
 @login_required
@@ -14,6 +15,7 @@ def user_list(request):
     users = (
         User.objects.select_related("profile")
         .prefetch_related("profile__branches", "profile__branches__customer")
+        .exclude(username__iexact=SYSTEM_ADMIN_USERNAME)
         .order_by("username")
     )
     return render(request, "accounts/user_list.html", {"users": users})
@@ -45,6 +47,8 @@ def user_create(request):
 @require_user_manager
 def user_edit(request, pk):
     user = get_object_or_404(User.objects.select_related("profile"), pk=pk)
+    if is_system_admin_user(user):
+        raise Http404()
     form = UserEditForm(request.POST or None, instance=user)
     if request.method == "POST" and form.is_valid():
         form.save()

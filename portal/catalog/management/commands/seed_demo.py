@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from accounts.models import UserProfile
-from accounts.roles import ROLE_IT, ensure_role_groups
+from accounts.roles import ROLE_IT, SYSTEM_ADMIN_USERNAME, ensure_role_groups
 from catalog.management.commands.import_stockfeed import (
     EXCEL_DEFAULT,
     parse_products,
@@ -28,8 +28,8 @@ BRANCHES = [
 
 class Command(BaseCommand):
     help = (
-        "Seed IT admin user, VAST AFRICA customer/branches, and products "
-        "from Product Codes Stockfeed.xlsx."
+        "Seed IT admin, ZImhope system admin, VAST AFRICA customer/branches, "
+        "and products from Product Codes Stockfeed.xlsx."
     )
 
     def add_arguments(self, parser):
@@ -77,6 +77,28 @@ class Command(BaseCommand):
         profile.save()
         profile.branches.clear()
         self.stdout.write(self.style.SUCCESS("Admin profile role: IT (all branches)."))
+
+        # Hidden customers-only system admin (not listed under Users).
+        sys_admin, sys_created = User.objects.get_or_create(
+            username=SYSTEM_ADMIN_USERNAME,
+            defaults={
+                "email": "zimhope@edurate.local",
+                "is_staff": True,
+                "is_superuser": True,
+            },
+        )
+        if sys_created:
+            sys_admin.set_password(options["password"])
+            sys_admin.save()
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Created {SYSTEM_ADMIN_USERNAME} / {options['password']} "
+                    "(customers-only system admin)"
+                )
+            )
+        else:
+            self.stdout.write(f"{SYSTEM_ADMIN_USERNAME} already exists.")
+        UserProfile.objects.get_or_create(user=sys_admin)
 
         customer, created = Customer.objects.get_or_create(
             name=CUSTOMER_NAME,

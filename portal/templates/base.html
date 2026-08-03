@@ -27,6 +27,12 @@
       <p class="brand-sub">Supplier stock monitoring</p>
     </div>
 
+    {% if is_system_admin %}
+    <div class="nav-section">Catalog</div>
+    <a class="nav-link {% if '/customers' in path %}active{% endif %}" href="{% url 'customer_list' %}">
+      <i class="bi bi-people"></i> Customers
+    </a>
+    {% else %}
     <div class="nav-section">Overview</div>
     <a class="nav-link {% if path == '/' %}active{% endif %}" href="{% url 'dashboard' %}">
       <i class="bi bi-grid-1x2"></i> Dashboard
@@ -38,11 +44,6 @@
     {% endif %}
 
     <div class="nav-section">Catalog</div>
-    {% if can_manage_customers %}
-    <a class="nav-link {% if '/customers' in path %}active{% endif %}" href="{% url 'customer_list' %}">
-      <i class="bi bi-people"></i> Customers
-    </a>
-    {% endif %}
     <a class="nav-link {% if '/branches' in path %}active{% endif %}" href="{% url 'branch_list' %}">
       <i class="bi bi-shop"></i> Branches
     </a>
@@ -83,6 +84,7 @@
     <a class="nav-link {% if path == '/reports/sync/' %}active{% endif %}" href="{% url 'report_sync' %}">
       <i class="bi bi-arrow-repeat"></i> Sync status
     </a>
+    {% endif %}
 
     <div class="sidebar-foot">
       <span class="user-chip">

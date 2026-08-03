@@ -7,6 +7,8 @@ from accounts.roles import (
     ROLE_CHOICES,
     ROLE_SALES,
     ROLE_SALES_ADMIN,
+    SYSTEM_ADMIN_USERNAME,
+    is_reserved_username,
 )
 from catalog.models import Branch
 
@@ -26,6 +28,14 @@ class UserCreateForm(forms.ModelForm):
     class Meta:
         model = User
         fields = ("username", "first_name", "last_name", "email")
+
+    def clean_username(self):
+        username = self.cleaned_data.get("username")
+        if is_reserved_username(username):
+            raise forms.ValidationError(
+                f"Username '{SYSTEM_ADMIN_USERNAME}' is reserved for the system admin."
+            )
+        return username
 
     def clean_password2(self):
         p1 = self.cleaned_data.get("password1")
@@ -93,6 +103,16 @@ class UserEditForm(forms.ModelForm):
             self.fields["role"].initial = profile.role
             self.fields["branches"].initial = profile.branches.all()
         self.fields["is_active"].initial = self.instance.is_active
+
+    def clean_username(self):
+        username = self.cleaned_data.get("username")
+        if is_reserved_username(username) and not is_reserved_username(
+            self.instance.username
+        ):
+            raise forms.ValidationError(
+                f"Username '{SYSTEM_ADMIN_USERNAME}' is reserved for the system admin."
+            )
+        return username
 
     def clean_password2(self):
         p1 = self.cleaned_data.get("password1")
