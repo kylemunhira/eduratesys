@@ -78,7 +78,7 @@ class Command(BaseCommand):
         profile.branches.clear()
         self.stdout.write(self.style.SUCCESS("Admin profile role: IT (all branches)."))
 
-        # Hidden customers-only system admin (not listed under Users).
+        # Hidden full-access system admin (Customers menu; not listed under Users).
         sys_admin, sys_created = User.objects.get_or_create(
             username=SYSTEM_ADMIN_USERNAME,
             defaults={
@@ -93,7 +93,7 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(
                     f"Created {SYSTEM_ADMIN_USERNAME} / {options['password']} "
-                    "(customers-only system admin)"
+                    "(full-access system admin; Customers)"
                 )
             )
         else:

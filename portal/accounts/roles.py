@@ -12,7 +12,7 @@ ROLE_COMMERCIAL_MANAGER = "Commercial Manager"
 ROLE_SALES_ADMIN = "Sales Admin"
 ROLE_SALES = "Sales"
 
-# Hidden system admin: Customers menu only; never listed under Users.
+# Hidden system admin: full portal access including Customers; never listed under Users.
 SYSTEM_ADMIN_USERNAME = "ZImhope"
 SYSTEM_ADMIN_LABEL = "System Admin"
 
@@ -48,7 +48,7 @@ def get_profile(user):
 
 
 def is_system_admin_user(user) -> bool:
-    """ZImhope: customers-only system admin, hidden from the Users list."""
+    """ZImhope: full portal access including Customers; hidden from the Users list."""
     if not user or not user.is_authenticated:
         return False
     return (user.username or "").lower() == SYSTEM_ADMIN_USERNAME.lower()
@@ -70,11 +70,11 @@ def user_role(user) -> str | None:
 
 
 def user_can_manage_users(user) -> bool:
-    """IT (or superuser) may create and edit portal users."""
+    """IT, superuser, or ZImhope may create and edit portal users."""
     if not user or not user.is_authenticated:
         return False
     if is_system_admin_user(user):
-        return False
+        return True
     if user.is_superuser:
         return True
     return user_role(user) == ROLE_IT
@@ -89,11 +89,11 @@ def user_can_manage_customers(user) -> bool:
 
 
 def user_is_admin(user) -> bool:
-    """Full catalog admin (branches/products deletes). Maps to IT."""
+    """Full catalog admin (branches/products deletes). Maps to IT / ZImhope."""
     if not user or not user.is_authenticated:
         return False
     if is_system_admin_user(user):
-        return False
+        return True
     if user.is_superuser:
         return True
     role = user_role(user)
@@ -107,7 +107,7 @@ def user_sees_all_branches(user) -> bool:
     if not user or not user.is_authenticated:
         return False
     if is_system_admin_user(user):
-        return False
+        return True
     if user.is_superuser or user_is_admin(user):
         return True
     role = user_role(user)
