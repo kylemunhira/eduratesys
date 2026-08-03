@@ -61,8 +61,16 @@ def user_can_manage_users(user) -> bool:
     return user_role(user) == ROLE_IT
 
 
+def user_can_manage_customers(user) -> bool:
+    """Only the initial system admin (Django superuser) may manage customers.
+
+    IT role users must not see or access the Customers menu/pages.
+    """
+    return bool(user and user.is_authenticated and user.is_superuser)
+
+
 def user_is_admin(user) -> bool:
-    """Full catalog admin (customers, deletes). Maps to IT."""
+    """Full catalog admin (branches/products deletes). Maps to IT."""
     if not user or not user.is_authenticated:
         return False
     if user.is_superuser:

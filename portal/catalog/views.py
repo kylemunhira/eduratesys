@@ -8,6 +8,7 @@ from accounts.models import log_audit
 from accounts.roles import (
     accessible_branches,
     user_can_access_branch,
+    user_can_manage_customers,
     user_is_admin,
 )
 
@@ -22,6 +23,13 @@ def _require_admin(request, message="Only IT can perform this action."):
     return True
 
 
+def _require_customer_admin(request, message="Only the system admin can manage customers."):
+    if not user_can_manage_customers(request.user):
+        messages.error(request, message)
+        return False
+    return True
+
+
 def _require_branch_access(request, branch, message="You do not have access to this branch."):
     if not user_can_access_branch(request.user, branch):
         messages.error(request, message)
@@ -31,7 +39,7 @@ def _require_branch_access(request, branch, message="You do not have access to t
 
 @login_required
 def customer_list(request):
-    if not _require_admin(request, "Customers are only available to IT."):
+    if not _require_customer_admin(request):
         return redirect("dashboard")
     customers = Customer.objects.all()
     return render(request, "catalog/customer_list.html", {"customers": customers})
@@ -39,7 +47,7 @@ def customer_list(request):
 
 @login_required
 def customer_create(request):
-    if not _require_admin(request, "Customers are only available to IT."):
+    if not _require_customer_admin(request):
         return redirect("dashboard")
     form = CustomerForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -51,7 +59,7 @@ def customer_create(request):
 
 @login_required
 def customer_edit(request, pk):
-    if not _require_admin(request, "Customers are only available to IT."):
+    if not _require_customer_admin(request):
         return redirect("dashboard")
     customer = get_object_or_404(Customer, pk=pk)
     form = CustomerForm(request.POST or None, instance=customer)
@@ -68,7 +76,7 @@ def customer_edit(request, pk):
 
 @login_required
 def customer_detail(request, pk):
-    if not _require_admin(request, "Customers are only available to IT."):
+    if not _require_customer_admin(request):
         return redirect("dashboard")
     customer = get_object_or_404(Customer.objects.prefetch_related("branches"), pk=pk)
     return render(request, "catalog/customer_detail.html", {"customer": customer})
@@ -77,7 +85,7 @@ def customer_detail(request, pk):
 @login_required
 @require_POST
 def customer_delete(request, pk):
-    if not _require_admin(request, "Only IT can delete customers and branches."):
+    if not _require_customer_admin(request, "Only the system admin can delete customers."):
         return redirect("dashboard")
     customer = get_object_or_404(Customer, pk=pk)
     name = customer.name

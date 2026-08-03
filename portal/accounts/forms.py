@@ -18,6 +18,7 @@ class UserCreateForm(forms.ModelForm):
     branches = forms.ModelMultipleChoiceField(
         queryset=Branch.objects.select_related("customer"),
         required=False,
+        label="Customer",
         widget=forms.CheckboxSelectMultiple,
         help_text="Assign branches for Sales Admin and Sales users.",
     )
@@ -75,6 +76,7 @@ class UserEditForm(forms.ModelForm):
     branches = forms.ModelMultipleChoiceField(
         queryset=Branch.objects.select_related("customer"),
         required=False,
+        label="Customer",
         widget=forms.CheckboxSelectMultiple,
         help_text="Assign branches for Sales Admin and Sales users.",
     )

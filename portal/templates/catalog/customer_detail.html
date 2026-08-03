@@ -5,7 +5,7 @@
   <h1 class="page-title">{{ customer.name }}</h1>
   <div class="d-flex gap-2">
     <a class="btn btn-sm btn-outline-dark" href="{% url 'customer_edit' customer.pk %}">Edit</a>
-    {% if is_admin %}
+    {% if can_manage_customers %}
     <form method="post" action="{% url 'customer_delete' customer.pk %}" onsubmit="return confirm('Delete customer {{ customer.name }} and all its branches? This cannot be undone.');">
       {% csrf_token %}
       <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>

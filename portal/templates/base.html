@@ -38,7 +38,7 @@
     {% endif %}
 
     <div class="nav-section">Catalog</div>
-    {% if is_admin %}
+    {% if can_manage_customers %}
     <a class="nav-link {% if '/customers' in path %}active{% endif %}" href="{% url 'customer_list' %}">
       <i class="bi bi-people"></i> Customers
     </a>
