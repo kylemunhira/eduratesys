@@ -22,11 +22,13 @@ SECRET_KEY = os.getenv(
     "django-insecure-dev-only-change-me-ssms-phase1",
 )
 DEBUG = os.getenv("DEBUG", "True").lower() in ("1", "true", "yes")
-ALLOWED_HOSTS = [
+_allowed_hosts = [
     h.strip()
-    for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,*").split(",")
     if h.strip()
 ]
+
+ALLOWED_HOSTS = ["*"] if "*" in _allowed_hosts else _allowed_hosts
 CSRF_TRUSTED_ORIGINS = [
     o.strip()
     for o in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
@@ -83,7 +85,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 DATABASES = {
     "default": dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        default="postgres://ssms:ssms@localhost:5432/ssms",
         conn_max_age=600,
     )
 }

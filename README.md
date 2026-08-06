@@ -31,8 +31,10 @@ copy portal\.env.example portal\.env
 cd portal
 python manage.py migrate
 python manage.py reset_portal
-python manage.py runserver
+python manage.py runserver 0.0.0.0:8000
 ```
+
+`0.0.0.0` binds the dev server to all network interfaces so other PCs on the same LAN can open the portal at `http://<this-pc-ip>:8000/` (find the IP with `ipconfig` on Windows). Allow inbound TCP **8000** in Windows Firewall if another machine cannot connect.
 
 `portal/.env` must set:
 
@@ -44,45 +46,79 @@ DATABASE_URL=postgres://ssms:ssms@localhost:5432/ssms
 
 **Docker alternative** (Linux containers): `docker compose up -d` uses port **5433** — set `DATABASE_URL=postgres://ssms:ssms@localhost:5433/ssms` in `portal/.env`.
 
-(Without `DATABASE_URL`, Django falls back to SQLite for local experiments only.)
+`DATABASE_URL` defaults to `postgres://ssms:ssms@localhost:5432/ssms` if unset (see `portal/config/settings.py`).
 
-Open http://127.0.0.1:8000/
+Open http://127.0.0.1:8000/ on this PC, or `http://<this-pc-ip>:8000/` from another device on the network.
 
 - **Login:** `admin` / `admin123` (change after first login)
 - **Admin:** http://127.0.0.1:8000/admin/
 - Branch API keys are on each branch detail page (local dev: Chivhu uses `ssms-local-chivhu-dev-key` after `seed_demo`)
 
-### Production (Waitress Windows service)
+### Production (Waitress + NSSM Windows service)
 
-On the portal server:
+NSSM runs the portal as a Windows service so it starts on boot and restarts after failures. Service name: **`SSMSPortal`**.
 
-1. Copy `build/portal` (or the `portal/` tree) onto the server.
-2. Create a venv and install deps: `pip install -r requirements.txt`
-3. Copy `.env.production.example` → `.env.production` and fill in real values.
-4. Download [NSSM](https://nssm.cc/download) and put `nssm.exe` on PATH (or pass `-NssmPath`).
-5. Install and start the service (run PowerShell **as Administrator**):
+#### Portal server setup
+
+1. Copy the repo (or at least `portal/`, `scripts/`, and a venv) onto the server, e.g. `C:\apps\ssms\`.
+2. Create venv and install deps:
 
 ```powershell
+cd C:\apps\ssms
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r portal\requirements.txt
+```
+
+3. Configure production env:
+
+```powershell
+copy portal\.env.production.example portal\.env.production
+# Edit portal\.env.production — DATABASE_URL, SECRET_KEY, ALLOWED_HOSTS, etc.
+```
+
+4. NSSM is at `C:\nssm\nssm.exe` on the server (scripts auto-detect this path). Or download [NSSM](https://nssm.cc/download) and extract there.
+
+5. Install and start the service — run PowerShell **as Administrator**:
+
+```powershell
+cd C:\apps\ssms
 .\scripts\install_portal_service.ps1 `
   -PortalDir "C:\apps\ssms\portal" `
   -PythonExe "C:\apps\ssms\.venv\Scripts\python.exe"
 ```
 
-Manual smoke test (without a service):
+Optional overrides: `-WaitressPort 2023`, `-WaitressHost 0.0.0.0`, `-NssmPath "C:\nssm\nssm.exe"`.
+
+The install script runs `migrate` and `collectstatic`, registers NSSM, and starts the service.
+
+6. Allow inbound TCP on the Waitress port in Windows Firewall (default **2023**).
+
+7. Verify:
+
+```powershell
+Get-Service SSMSPortal
+# Status should be Running
+curl http://localhost:2023/
+```
+
+Logs: `portal\logs\waitress-stdout.log` and `waitress-stderr.log`.
+
+Manual smoke test (without NSSM):
 
 ```powershell
 cd C:\apps\ssms\portal
 $env:APP_ENV = "production"
-..\..\.venv\Scripts\python.exe run_waitress.py
+C:\apps\ssms\.venv\Scripts\python.exe run_waitress.py
 ```
 
-Uninstall:
+Uninstall portal service:
 
 ```powershell
 .\scripts\uninstall_portal_service.ps1
 ```
 
-Service name: `SSMSPortal`. Logs go to `portal\logs\`. Default listen address: `0.0.0.0:2023` (override with `WAITRESS_*` in `.env.production` or the install script).
+Default listen address: `0.0.0.0:2023` (override with `WAITRESS_*` in `.env.production` or install-script parameters).
 
 ### Sales sync API
 
@@ -126,10 +162,40 @@ Sets absolute `BranchStock.quantity` for matching barcodes (4Pos remaining qty).
 
 ## Sync service (.NET)
 
+### Development
+
 ```powershell
 cd sync-service\PosSyncService
 # Edit appsettings.json: set Sync:ApiKey from the branch page
 dotnet run
+```
+
+### Production (NSSM Windows service)
+
+On each branch PC that syncs POS data to the portal. Service name: **`SSMSPosSync`**.
+
+1. Edit `appsettings.Production.json` (or `appsettings.json` in the publish folder): set `Sync:ApiBaseUrl`, `Sync:ApiKey`, `Sync:SqlConnectionString`, and queries.
+2. Install NSSM (same as portal server).
+3. Run PowerShell **as Administrator**:
+
+```powershell
+cd C:\apps\ssms
+.\scripts\install_sync_service.ps1 -Publish
+```
+
+Or publish manually and point at the output folder:
+
+```powershell
+dotnet publish sync-service\PosSyncService -c Release -o C:\apps\ssms\sync
+.\scripts\install_sync_service.ps1 -ServiceDir "C:\apps\ssms\sync"
+```
+
+Logs: `sync\logs\sync-stdout.log` and `sync-stderr.log`. State/retry files: `sync-state.json`, `retry-queue.log` next to the executable.
+
+Uninstall:
+
+```powershell
+.\scripts\uninstall_sync_service.ps1
 ```
 
 Config (`Sync` section):

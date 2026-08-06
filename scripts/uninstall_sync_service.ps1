@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-  Stop and remove the SSMS portal Windows service.
+  Stop and remove the SSMS POS sync Windows service.
 #>
 param(
-    [string]$ServiceName = "SSMSPortal",
+    [string]$ServiceName = "SSMSPosSync",
     [string]$NssmPath = ""
 )
 

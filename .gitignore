@@ -16,5 +16,6 @@ portal/logs/
 .vscode/
 sync-service/**/bin/
 sync-service/**/obj/
+sync-service/**/publish/
 *.user
 build/

@@ -56,6 +56,7 @@ function Resolve-Nssm {
     $cmd = Get-Command nssm -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
     foreach ($candidate in @(
+            "C:\nssm\nssm.exe",
             "C:\Tools\nssm\nssm.exe",
             "C:\Program Files\nssm\nssm.exe",
             (Join-Path $repoRoot "tools\nssm\nssm.exe")
@@ -86,18 +87,18 @@ finally {
 
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existing) {
-    Write-Host "Service '$ServiceName' already exists — updating configuration..." -ForegroundColor Yellow
+    Write-Host "Service '$ServiceName' already exists - updating configuration..." -ForegroundColor Yellow
     & $nssm stop $ServiceName confirm
     Start-Sleep -Seconds 2
 }
 else {
     Write-Host "Installing service '$ServiceName'..." -ForegroundColor Cyan
-    & $nssm install $ServiceName $PythonExe "`"$runScript`""
+    & $nssm install $ServiceName $PythonExe $runScript
     if ($LASTEXITCODE -ne 0) { throw "nssm install failed ($LASTEXITCODE)" }
 }
 
 & $nssm set $ServiceName Application $PythonExe
-& $nssm set $ServiceName AppParameters "`"$runScript`""
+& $nssm set $ServiceName AppParameters $runScript
 & $nssm set $ServiceName AppDirectory $PortalDir
 & $nssm set $ServiceName DisplayName $DisplayName
 & $nssm set $ServiceName Description "Supplier Stock Monitoring System web portal (Django + Waitress)"
@@ -106,7 +107,8 @@ else {
 & $nssm set $ServiceName AppStderr (Join-Path $PortalDir "logs\waitress-stderr.log")
 & $nssm set $ServiceName AppRotateFiles 1
 & $nssm set $ServiceName AppRotateBytes 10485760
-& $nssm set $ServiceName AppEnvironmentExtra "APP_ENV=production`0WAITRESS_HOST=$WaitressHost`0WAITRESS_PORT=$WaitressPort`0WAITRESS_THREADS=$Threads"
+$appEnvExtra = "APP_ENV=production" + [char]0 + "WAITRESS_HOST=$WaitressHost" + [char]0 + "WAITRESS_PORT=$WaitressPort" + [char]0 + "WAITRESS_THREADS=$Threads"
+& $nssm set $ServiceName AppEnvironmentExtra $appEnvExtra
 
 $logDir = Join-Path $PortalDir "logs"
 if (-not (Test-Path $logDir)) {
