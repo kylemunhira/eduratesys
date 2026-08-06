@@ -6,6 +6,8 @@
   <div class="d-flex gap-2">
     {% if is_admin %}
     <a class="btn btn-sm btn-outline-dark" href="{% url 'branch_edit' branch.pk %}">Edit</a>
+    {% endif %}
+    {% if can_delete_branches %}
     <form method="post" action="{% url 'branch_delete' branch.pk %}" onsubmit="return confirm('Delete branch {{ branch.name }}? This cannot be undone.');">
       {% csrf_token %}
       <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>

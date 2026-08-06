@@ -88,8 +88,13 @@ def user_can_manage_customers(user) -> bool:
     return is_system_admin_user(user)
 
 
+def user_can_delete_branches(user) -> bool:
+    """Only ZImhope (system admin) may delete branches."""
+    return is_system_admin_user(user)
+
+
 def user_is_admin(user) -> bool:
-    """Full catalog admin (branches/products deletes). Maps to IT / ZImhope."""
+    """Full catalog admin (branch/product create & edit). Maps to IT / ZImhope."""
     if not user or not user.is_authenticated:
         return False
     if is_system_admin_user(user):

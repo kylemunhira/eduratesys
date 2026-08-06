@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -8,6 +9,7 @@ from accounts.models import log_audit
 from accounts.roles import (
     accessible_branches,
     user_can_access_branch,
+    user_can_delete_branches,
     user_can_manage_customers,
     user_is_admin,
 )
@@ -172,7 +174,8 @@ def branch_regenerate_key(request, pk):
 @login_required
 @require_POST
 def branch_delete(request, pk):
-    if not _require_admin(request):
+    if not user_can_delete_branches(request.user):
+        messages.error(request, "Only the system admin can delete branches.")
         return redirect("branch_detail", pk=pk)
     branch = get_object_or_404(Branch.objects.select_related("customer"), pk=pk)
     label = f"{branch.customer.name} / {branch.name}"
@@ -199,7 +202,19 @@ def branch_delete(request, pk):
 @login_required
 def product_list(request):
     products = Product.objects.all()
-    return render(request, "catalog/product_list.html", {"products": products})
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        products = products.filter(
+            Q(code__icontains=q)
+            | Q(name__icontains=q)
+            | Q(barcode__icontains=q)
+            | Q(category__icontains=q)
+        )
+    return render(
+        request,
+        "catalog/product_list.html",
+        {"products": products, "q": q},
+    )
 
 
 @login_required
