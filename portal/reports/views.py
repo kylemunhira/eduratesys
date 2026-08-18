@@ -80,7 +80,7 @@ def sales_report_data(request):
         ),
         request.user,
         field="sale__branch_id",
-    ).order_by("sale__sold_at", "sale__external_sale_id", "pk")
+    ).order_by("-sale__sold_at", "-sale__external_sale_id", "-pk")
     branch_id = request.GET.get("branch") or ""
     if branch_id.isdigit():
         bid = int(branch_id)
@@ -136,7 +136,7 @@ def sales_report_data(request):
             if tons is not None:
                 bucket["tons"] += tons
                 bucket["has_tons"] = True
-            if sold_date < bucket["date"]:
+            if sold_date > bucket["date"]:
                 bucket["date"] = sold_date
 
         volume = tons if tons is not None else Decimal("0")
@@ -173,14 +173,15 @@ def sales_report_data(request):
             }
         )
 
+    # Newest sale date first; names stay A–Z within the same date (stable sort).
     raw_rows.sort(
         key=lambda r: (
-            r["date"] or timezone.localdate(),
             r["customer_name"].lower(),
             r["branch"].lower(),
             r["item_description"].lower(),
         )
     )
+    raw_rows.sort(key=lambda r: r["date"] or timezone.localdate(), reverse=True)
 
     def _summary(mapping):
         return [
@@ -336,13 +337,14 @@ def sync_report(request):
     )
 
 
-@login_required
-def stock_movement(request):
+def stock_movement_data(request):
     """
     Period stock movement per customer or branch × product.
 
-    Opening = approved dispatches − sales − losses (before period)
-    Closing = opening + dispatched − sold − shrinkage/damaged (in period)
+    Closing = current BranchStock rolled back to period end
+              (on-hand − In after period + Out after period)
+    Opening = Closing − In + Out
+              (In = dispatched, Out = sold + shrinkage/damaged)
     """
     bounds = parse_period_bounds(request)
     start_dt = bounds["start_dt"]
@@ -397,10 +399,12 @@ def stock_movement(request):
         d_key = ("dispatch__customer_id", "product_id")
         s_key = ("sale__branch__customer_id", "product_id")
         l_key = ("branch__customer_id", "product_id")
+        stock_key = ("branch__customer_id", "product_id")
     else:
         d_key = ("dispatch__customer_id", "dispatch__branch_id", "product_id")
         s_key = ("sale__branch__customer_id", "sale__branch_id", "product_id")
         l_key = ("branch__customer_id", "branch_id", "product_id")
+        stock_key = ("branch__customer_id", "branch_id", "product_id")
 
     def _bucket(qs, values_fields, qty_field="quantity"):
         return {
@@ -408,7 +412,6 @@ def stock_movement(request):
             for row in qs.values(*values_fields).annotate(total=Sum(qty_field))
         }
 
-    # Opening stock from BranchStock (matches Stock Balance report)
     stock_qs = filter_by_accessible_branches(BranchStock.objects.all(), request.user)
     if customer_id.isdigit():
         stock_qs = stock_qs.filter(branch__customer_id=int(customer_id))
@@ -419,15 +422,7 @@ def stock_movement(request):
         else:
             stock_qs = stock_qs.none()
 
-    if group_by == "customer":
-        stock_balance = _bucket(
-            stock_qs, ("branch__customer_id", "product_id")
-        )
-    else:
-        stock_balance = _bucket(
-            stock_qs, ("branch__customer_id", "branch_id", "product_id")
-        )
-
+    stock_now = _bucket(stock_qs, stock_key)
     dispatched_in = _bucket(
         dispatch_base.filter(
             dispatch__approved_at__gte=start_dt, dispatch__approved_at__lt=end_dt
@@ -442,29 +437,40 @@ def stock_movement(request):
         loss_base.filter(recorded_at__gte=start_dt, recorded_at__lt=end_dt),
         l_key,
     )
-
-    totals = defaultdict(
-        lambda: {
-            "opening": 0,
-            "dispatched": 0,
-            "sold": 0,
-            "shrinkage": 0,
-            "closing": 0,
-        }
+    dispatched_after = _bucket(
+        dispatch_base.filter(dispatch__approved_at__gte=end_dt),
+        d_key,
+    )
+    sold_after = _bucket(
+        sale_base.filter(sale__sold_at__gte=end_dt),
+        s_key,
+    )
+    loss_after = _bucket(
+        loss_base.filter(recorded_at__gte=end_dt),
+        l_key,
     )
 
     all_keys = set()
-    all_keys.update(stock_balance)
+    all_keys.update(stock_now)
     all_keys.update(dispatched_in)
     all_keys.update(sold_in)
     all_keys.update(loss_in)
+    all_keys.update(dispatched_after)
+    all_keys.update(sold_after)
+    all_keys.update(loss_after)
 
+    totals = {}
     for key in all_keys:
-        opening = stock_balance.get(key, 0)
         dispatched = dispatched_in.get(key, 0)
         sold = sold_in.get(key, 0)
         shrinkage = loss_in.get(key, 0)
-        closing = opening + dispatched - sold - shrinkage
+        closing = (
+            stock_now.get(key, 0)
+            - dispatched_after.get(key, 0)
+            + sold_after.get(key, 0)
+            + loss_after.get(key, 0)
+        )
+        opening = closing - dispatched + sold + shrinkage
         if opening == dispatched == sold == shrinkage == closing == 0:
             continue
         totals[key] = {
@@ -518,16 +524,26 @@ def stock_movement(request):
     else:
         rows.sort(key=lambda r: (r["customer"].name, r["product"].code))
 
+    return {
+        "bounds": bounds,
+        "rows": rows,
+        "group_by": group_by,
+        "customers": customers,
+        "branches": branches,
+        "selected_customer": customer_id,
+        "selected_branch": branch_id,
+    }
+
+
+@login_required
+def stock_movement(request):
+    data = stock_movement_data(request)
+    bounds = data.pop("bounds")
     return render(
         request,
         "reports/stock_movement.html",
         {
-            "rows": rows,
-            "group_by": group_by,
-            "customers": customers,
-            "branches": branches,
-            "selected_customer": customer_id,
-            "selected_branch": branch_id,
+            **data,
             **_period_context(bounds),
         },
     )

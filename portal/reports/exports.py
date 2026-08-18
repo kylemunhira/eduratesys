@@ -7,11 +7,9 @@ from django.http import HttpResponse
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
-from catalog.models import Branch, Customer, Product
-from django.db.models import Sum
-from inventory.models import BranchStock, Dispatch, DispatchItem, StockLoss
+from inventory.models import BranchStock, Dispatch
 from reports.period import parse_period_bounds
-from sales.models import SaleItem, SyncLog
+from sales.models import SyncLog
 from accounts.roles import filter_by_accessible_branches
 
 
@@ -275,123 +273,31 @@ def export_sync(request):
 
 @login_required
 def export_stock_movement(request):
-    from collections import defaultdict
+    from reports.views import stock_movement_data
 
-    bounds = parse_period_bounds(request)
-    start_dt = bounds["start_dt"]
-    end_dt = bounds["end_dt"]
-    group_by = request.GET.get("group_by") or "branch"
-    if group_by not in ("branch", "customer"):
-        group_by = "branch"
-
-    customer_id = request.GET.get("customer") or ""
-    branch_id = request.GET.get("branch") or ""
-
-    dispatch_base = filter_by_accessible_branches(
-        DispatchItem.objects.filter(
-            dispatch__status=Dispatch.Status.APPROVED,
-            dispatch__approved_at__isnull=False,
-        ),
-        request.user,
-        field="dispatch__branch_id",
-    )
-    sale_base = filter_by_accessible_branches(
-        SaleItem.objects.all(),
-        request.user,
-        field="sale__branch_id",
-    )
-    loss_base = filter_by_accessible_branches(StockLoss.objects.all(), request.user)
-
-    if customer_id.isdigit():
-        cid = int(customer_id)
-        dispatch_base = dispatch_base.filter(dispatch__customer_id=cid)
-        sale_base = sale_base.filter(sale__branch__customer_id=cid)
-        loss_base = loss_base.filter(branch__customer_id=cid)
-    if branch_id.isdigit():
-        bid = int(branch_id)
-        dispatch_base = dispatch_base.filter(dispatch__branch_id=bid)
-        sale_base = sale_base.filter(sale__branch_id=bid)
-        loss_base = loss_base.filter(branch_id=bid)
-
-    if group_by == "customer":
-        d_key = ("dispatch__customer_id", "product_id")
-        s_key = ("sale__branch__customer_id", "product_id")
-        l_key = ("branch__customer_id", "product_id")
-    else:
-        d_key = ("dispatch__customer_id", "dispatch__branch_id", "product_id")
-        s_key = ("sale__branch__customer_id", "sale__branch_id", "product_id")
-        l_key = ("branch__customer_id", "branch_id", "product_id")
-
-    def _bucket(qs, values_fields, qty_field="quantity"):
-        return {
-            tuple(row[f] for f in values_fields): row["total"] or 0
-            for row in qs.values(*values_fields).annotate(total=Sum(qty_field))
-        }
-
-    stock_qs = filter_by_accessible_branches(BranchStock.objects.all(), request.user)
-    if customer_id.isdigit():
-        stock_qs = stock_qs.filter(branch__customer_id=int(customer_id))
-    if branch_id.isdigit():
-        stock_qs = stock_qs.filter(branch_id=int(branch_id))
-
-    if group_by == "customer":
-        stock_balance = _bucket(stock_qs, ("branch__customer_id", "product_id"))
-    else:
-        stock_balance = _bucket(stock_qs, ("branch__customer_id", "branch_id", "product_id"))
-
-    dispatched_in = _bucket(
-        dispatch_base.filter(dispatch__approved_at__gte=start_dt, dispatch__approved_at__lt=end_dt),
-        d_key,
-    )
-    sold_in = _bucket(
-        sale_base.filter(sale__sold_at__gte=start_dt, sale__sold_at__lt=end_dt),
-        s_key,
-    )
-    loss_in = _bucket(
-        loss_base.filter(recorded_at__gte=start_dt, recorded_at__lt=end_dt),
-        l_key,
-    )
-
-    all_keys = set()
-    all_keys.update(stock_balance)
-    all_keys.update(dispatched_in)
-    all_keys.update(sold_in)
-    all_keys.update(loss_in)
-
-    product_ids = {k[-1] for k in all_keys}
-    customer_ids = {k[0] for k in all_keys}
-    products = {p.pk: p for p in Product.objects.filter(pk__in=product_ids)}
-    customer_map = {c.pk: c for c in Customer.objects.filter(pk__in=customer_ids)}
-    branch_map = {}
-    if group_by == "branch":
-        branch_ids = {k[1] for k in all_keys}
-        branch_map = {b.pk: b for b in Branch.objects.filter(pk__in=branch_ids)}
-
+    data = stock_movement_data(request)
+    group_by = data["group_by"]
     if group_by == "branch":
         headers = ["Customer", "Branch", "Code", "Product", "Opening", "Dispatched", "Sold", "Shrinkage", "Closing"]
     else:
         headers = ["Customer", "Code", "Product", "Opening", "Dispatched", "Sold", "Shrinkage", "Closing"]
 
     export_rows = []
-    for key in sorted(all_keys):
-        product = products.get(key[-1])
-        customer = customer_map.get(key[0])
-        if not product or not customer:
-            continue
-        opening = stock_balance.get(key, 0)
-        dispatched = dispatched_in.get(key, 0)
-        sold = sold_in.get(key, 0)
-        shrinkage = loss_in.get(key, 0)
-        closing = opening + dispatched - sold - shrinkage
-        if opening == dispatched == sold == shrinkage == closing == 0:
-            continue
-        row = [customer.name]
+    for r in data["rows"]:
+        row = [r["customer"].name]
         if group_by == "branch":
-            branch = branch_map.get(key[1])
-            if not branch:
-                continue
-            row.append(branch.name)
-        row.extend([product.code, product.name, opening, dispatched, sold, shrinkage, closing])
+            row.append(r["branch"].name)
+        row.extend(
+            [
+                r["product"].code,
+                r["product"].name,
+                r["opening"],
+                r["dispatched"],
+                r["sold"],
+                r["shrinkage"],
+                r["closing"],
+            ]
+        )
         export_rows.append(row)
 
     return _export(request, headers, export_rows, "Stock Movement")

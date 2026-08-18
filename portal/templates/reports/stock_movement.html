@@ -42,7 +42,7 @@
 
   {% include "includes/report_actions.html" with export_url="export_stock_movement" %}
   <p class="small text-muted mb-3">
-    Opening = stock before the period · Closing = Opening + Dispatched − Sold − Shrinkage/Damaged
+    Opening = Closing − Dispatched + Sold + Shrinkage/Damaged · Closing = stock on hand at period end
   </p>
 
   <div class="table-responsive">

@@ -70,7 +70,7 @@ public sealed class Worker : BackgroundService
         var state = await LoadStateAsync(ct);
         var rows = _options.UseDemoMode
             ? BuildDemoRows(state)
-            : await QueryPosAsync(state.Watermark, ct);
+            : await QueryPosAsync(state, ct);
 
         if (rows.Count == 0)
         {
@@ -175,15 +175,23 @@ public sealed class Worker : BackgroundService
         new StockRow("8880029370108", 18)
     ];
 
-    private async Task<List<SaleRow>> QueryPosAsync(string watermark, CancellationToken ct)
+    private DateTime GetMinSaleDate(SyncState state)
+    {
+        var installed = state.InstalledAt ?? DateTime.Now;
+        return installed.Date.AddDays(-Math.Max(0, _options.SalesLookbackDays));
+    }
+
+    private async Task<List<SaleRow>> QueryPosAsync(SyncState state, CancellationToken ct)
     {
         EnsureSqlConfigured();
 
+        var minSaleDate = GetMinSaleDate(state);
         var rows = new List<SaleRow>();
         await using var conn = new SqlConnection(_options.SqlConnectionString);
         await conn.OpenAsync(ct);
         await using var cmd = new SqlCommand(_options.SalesQuery, conn);
-        cmd.Parameters.AddWithValue("@Watermark", watermark ?? "");
+        cmd.Parameters.AddWithValue("@Watermark", state.Watermark ?? "");
+        cmd.Parameters.AddWithValue("@MinSaleDate", minSaleDate);
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
@@ -259,14 +267,29 @@ public sealed class Worker : BackgroundService
 
     private async Task<SyncState> LoadStateAsync(CancellationToken ct)
     {
+        SyncState state;
         if (!File.Exists(_statePath))
         {
-            return new SyncState();
+            state = new SyncState();
+        }
+        else
+        {
+            await using var stream = File.OpenRead(_statePath);
+            state = await JsonSerializer.DeserializeAsync<SyncState>(stream, cancellationToken: ct)
+                ?? new SyncState();
         }
 
-        await using var stream = File.OpenRead(_statePath);
-        var state = await JsonSerializer.DeserializeAsync<SyncState>(stream, cancellationToken: ct)
-            ?? new SyncState();
+        var changed = false;
+        if (state.InstalledAt is null)
+        {
+            state.InstalledAt = DateTime.Now;
+            changed = true;
+            _logger.LogInformation(
+                "Sync install date recorded as {InstalledAt:g}; syncing sales from {MinSaleDate:g} onward ({LookbackDays} day lookback).",
+                state.InstalledAt,
+                GetMinSaleDate(state),
+                _options.SalesLookbackDays);
+        }
 
         // Demo watermarks (DEMO-*) sort above numeric POS SaleIDs in string comparisons,
         // which blocks all real sales until the state file is cleared.
@@ -278,6 +301,11 @@ public sealed class Worker : BackgroundService
                 "Clearing demo watermark {Watermark} before live SQL sync.",
                 state.Watermark);
             state.Watermark = "";
+            changed = true;
+        }
+
+        if (changed)
+        {
             await SaveStateAsync(state, ct);
         }
 
@@ -312,5 +340,10 @@ public sealed class Worker : BackgroundService
     {
         public string Watermark { get; set; } = "";
         public DateTime? LastSuccessUtc { get; set; }
+
+        /// <summary>
+        /// Local date/time when this branch sync was first installed (persisted in sync-state.json).
+        /// </summary>
+        public DateTime? InstalledAt { get; set; }
     }
 }

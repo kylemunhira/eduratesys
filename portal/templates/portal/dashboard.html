@@ -29,11 +29,38 @@
 
 <div class="stat-grid">
   {% if not is_admin %}<div class="stat" hidden><div class="label">Customers</div><div class="value">{{ total_customers }}</div></div>{% endif %}
-  <div class="stat"><div class="label">Branches</div><div class="value">{{ total_branches }}</div></div>
-  <div class="stat"><div class="label">Products</div><div class="value">{{ total_products }}</div></div>
-  <div class="stat"><div class="label">Sales Categories <span class="stat-sub">{{ period_label }}</span></div><div class="value">{{ period_sales_count }}</div></div>
-  <div class="stat"><div class="label">Total Sold <span class="stat-sub">{{ period_label }}</span></div><div class="value">{{ period_sales_total }}</div></div>
-  <div class="stat"><div class="label">Inventory units</div><div class="value">{{ inventory_units }}</div></div>
+  <a class="stat" href="{% url 'branch_list' %}" title="Open branches">
+    <div class="label">Branches</div>
+    <div class="value">{{ total_branches }}</div>
+  </a>
+  <a class="stat" href="{% url 'product_list' %}{% if selected_category %}?q={{ selected_category|urlencode }}{% endif %}" title="Open products">
+    <div class="label">Products</div>
+    <div class="value">{{ total_products }}</div>
+  </a>
+  <a
+    class="stat"
+    href="{% url 'report_sales' %}?view=category&period={{ period }}&date_from={{ date_from }}&date_to={{ date_to }}"
+    title="Open sales by category"
+  >
+    <div class="label">Sales Categories <span class="stat-sub">{{ period_label }}</span></div>
+    <div class="value">{{ period_sales_count }}</div>
+  </a>
+  <a
+    class="stat"
+    href="{% url 'report_sales' %}?view=raw&period={{ period }}&date_from={{ date_from }}&date_to={{ date_to }}"
+    title="Open sales report"
+  >
+    <div class="label">Total Sold <span class="stat-sub">{{ period_label }}</span></div>
+    <div class="value">{{ period_sales_total }}</div>
+  </a>
+  <a class="stat" href="{% url 'report_stock' %}" title="Open stock balance">
+    <div class="label">Inventory units</div>
+    <div class="value">{{ inventory_units }}</div>
+  </a>
+  <a class="stat" href="{% url 'report_stock' %}" title="Open stock balance">
+    <div class="label">Inventory tons</div>
+    <div class="value">{{ inventory_tons|default:"0.00" }}</div>
+  </a>
 </div>
 
 <section class="card-panel category-sold-panel">

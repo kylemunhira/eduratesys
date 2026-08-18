@@ -1,5 +1,5 @@
 from datetime import timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
@@ -79,10 +79,19 @@ def dashboard(request):
     ]
 
     low_stock = []
+    inventory_units = 0
+    inventory_tons = Decimal("0")
     for row in stock_qs:
+        inventory_units += row.quantity
+        tons = _tons(row.quantity, pack_size_kg(row.product.name))
+        if tons is not None:
+            inventory_tons += tons
         limit = row.product.effective_threshold(threshold)
         if row.quantity <= limit:
             low_stock.append((row, limit))
+    inventory_tons = inventory_tons.quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
 
     fast_moving = list(
         sale_items.values("product__code", "product__name")
@@ -201,7 +210,8 @@ def dashboard(request):
         "total_products": products_qs.count(),
         "period_sales_count": period_sales_count,
         "period_sales_total": period_sales_total,
-        "inventory_units": stock_qs.aggregate(s=Sum("quantity"))["s"] or 0,
+        "inventory_units": inventory_units,
+        "inventory_tons": f"{inventory_tons:.2f}",
         "category_sold": category_sold,
         "category_sold_total": category_sold_total,
         "low_stock": low_stock[:10],

@@ -2,7 +2,7 @@
 
 Web portal for suppliers to track stock dispatched to customer branches, with sales pulled from each branch POS via a Windows sync agent.
 
-**Stock formula:** branch on-hand is synced from POS remaining quantity (`StockItem_Quantity`); dispatches still increase stock when approved until the next POS stock snapshot overwrites it.
+**Stock formula:** branch on-hand is synced from POS warehouse remaining quantity (`WarehouseStockItemLnk_Quantity`); dispatches still increase stock when approved until the next POS stock snapshot overwrites it.
 
 ## Layout
 
@@ -158,7 +158,7 @@ Header: `X-API-Key: <branch api key>`
 }
 ```
 
-Sets absolute `BranchStock.quantity` for matching barcodes (4Pos remaining qty).
+Sets absolute `BranchStock.quantity` for matching barcodes (4POS warehouse remaining qty from `WarehouseStockItemLnk`).
 
 ## Sync service (.NET)
 
@@ -208,7 +208,7 @@ Config (`Sync` section):
 | `SyncStock` | `true` pushes POS remaining qty to `/api/stock/` each cycle |
 | `SqlConnectionString` | POS SQL Server (when `UseDemoMode` is false) |
 | `SalesQuery` | Must return `ExternalSaleId`, `SoldAt`, `ProductCode`, `Barcode`, `Quantity`, `UnitPrice`; filter with `@Watermark` |
-| `StockQuery` | Must return `Barcode`, `Quantity` (POS remaining / on-hand) |
+| `StockQuery` | Must return `Barcode`, `Quantity` (POS warehouse on-hand from `WarehouseStockItemLnk`) |
 | `PollIntervalSeconds` | Poll interval |
 
 Watermark is stored in `sync-state.json` next to the binary. Failed cycles append to `retry-queue.log`.
