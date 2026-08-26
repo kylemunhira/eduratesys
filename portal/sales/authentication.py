@@ -16,5 +16,8 @@ class BranchAPIKeyAuthentication(authentication.BaseAuthentication):
             branch = Branch.objects.select_related("customer").get(api_key=key)
         except Branch.DoesNotExist as exc:
             raise exceptions.AuthenticationFailed("Invalid API key") from exc
+        if branch.is_api_key_expired:
+            branch.mark_api_key_expired()
+            raise exceptions.AuthenticationFailed("API key expired") from None
         request.branch = branch
         return (None, branch)

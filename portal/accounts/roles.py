@@ -88,6 +88,16 @@ def user_can_manage_customers(user) -> bool:
     return is_system_admin_user(user)
 
 
+def user_can_create_branches(user) -> bool:
+    """Only ZImhope (system admin) may create branches."""
+    return is_system_admin_user(user)
+
+
+def user_can_view_branch_api_keys(user) -> bool:
+    """Only ZImhope (system admin) may view, renew, or regenerate branch API keys."""
+    return is_system_admin_user(user)
+
+
 def user_can_delete_branches(user) -> bool:
     """Only ZImhope (system admin) may delete branches."""
     return is_system_admin_user(user)

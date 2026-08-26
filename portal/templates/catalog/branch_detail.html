@@ -20,10 +20,35 @@
   <p><strong>Address:</strong> {{ branch.address|default:"—" }}</p>
   <p><strong>Machine ID:</strong> {{ branch.machine_id|default:"—" }}</p>
   <p><strong>Last sync:</strong> {{ branch.last_sync_at|default:"Never" }}</p>
-  {% if is_admin %}
+  {% if can_view_branch_api_keys %}
   <p class="mb-2"><strong>API key</strong></p>
   <code class="mono d-block mb-2">{{ branch.api_key }}</code>
-  <form method="post" action="{% url 'branch_regenerate_key' branch.pk %}" onsubmit="return confirm('Regenerate API key? The sync service must be updated.');">
+  <p>
+    <strong>Valid until:</strong>
+    {% if branch.api_key_valid_until %}
+      {{ branch.api_key_valid_until }}
+    {% else %}
+      No expiry
+    {% endif %}
+  </p>
+  <p>
+    <strong>Key status:</strong>
+    {% if branch.api_key_expired or branch.is_api_key_expired %}
+      <span class="badge text-bg-danger">Expired</span>
+    {% else %}
+      <span class="badge badge-soft">Active</span>
+    {% endif %}
+  </p>
+  <form method="post" action="{% url 'branch_renew_key' branch.pk %}" class="mb-3">
+    {% csrf_token %}
+    <label class="form-label small mb-1" for="id_valid_until">Renew until</label>
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+      {{ renew_form.valid_until }}
+      <button class="btn btn-sm btn-outline-primary" type="submit">Renew key</button>
+    </div>
+    <p class="small text-muted mt-1 mb-0">Renews validity only — the key value does not change.</p>
+  </form>
+  <form method="post" action="{% url 'branch_regenerate_key' branch.pk %}" onsubmit="return confirm('Regenerate API key? The sync service must be updated with the new key.');">
     {% csrf_token %}
     <button class="btn btn-sm btn-outline-danger" type="submit">Regenerate key</button>
   </form>

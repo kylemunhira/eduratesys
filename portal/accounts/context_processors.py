@@ -1,7 +1,9 @@
 from accounts.roles import (
+    user_can_create_branches,
     user_can_delete_branches,
     user_can_manage_customers,
     user_can_manage_users,
+    user_can_view_branch_api_keys,
     user_is_admin,
     user_role,
     user_sees_all_branches,
@@ -14,6 +16,8 @@ def roles(request):
         "is_admin": user_is_admin(user),
         "can_manage_users": user_can_manage_users(user),
         "can_manage_customers": user_can_manage_customers(user),
+        "can_create_branches": user_can_create_branches(user),
+        "can_view_branch_api_keys": user_can_view_branch_api_keys(user),
         "can_delete_branches": user_can_delete_branches(user),
         "user_role": user_role(user),
         "sees_all_branches": user_sees_all_branches(user),

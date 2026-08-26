@@ -45,6 +45,8 @@ class Branch(models.Model):
     )
     manager = models.CharField(max_length=200, blank=True)
     api_key = models.CharField(max_length=64, unique=True, default=generate_api_key)
+    api_key_valid_until = models.DateTimeField(null=True, blank=True)
+    api_key_expired = models.BooleanField(default=False)
     machine_id = models.CharField(max_length=100, blank=True, default="")
     last_sync_at = models.DateTimeField(null=True, blank=True)
     is_online = models.BooleanField(default=False)
@@ -58,9 +60,52 @@ class Branch(models.Model):
     def __str__(self):
         return f"{self.customer.name} / {self.name}"
 
+    @property
+    def is_api_key_expired(self) -> bool:
+        if self.api_key_valid_until is None:
+            return False
+        return timezone.now() >= self.api_key_valid_until
+
+    def refresh_api_key_expiry(self):
+        """Persist expired state when valid_until has passed."""
+        if not self.is_api_key_expired:
+            return False
+        if self.api_key_expired and not self.is_online:
+            return False
+        self.api_key_expired = True
+        self.is_online = False
+        self.save(
+            update_fields=["api_key_expired", "is_online", "updated_at"]
+        )
+        return True
+
+    def mark_api_key_expired(self):
+        """Called when sync is rejected because the API key has expired."""
+        self.api_key_expired = True
+        self.is_online = False
+        self.save(
+            update_fields=["api_key_expired", "is_online", "updated_at"]
+        )
+
+    def renew_api_key(self, valid_until):
+        """Extend API key validity without changing the key value."""
+        self.api_key_valid_until = valid_until
+        self.api_key_expired = False
+        self.save(
+            update_fields=[
+                "api_key_valid_until",
+                "api_key_expired",
+                "updated_at",
+            ]
+        )
+        return self.api_key
+
     def regenerate_api_key(self):
         self.api_key = generate_api_key()
-        self.save(update_fields=["api_key", "updated_at"])
+        self.api_key_expired = False
+        self.save(
+            update_fields=["api_key", "api_key_expired", "updated_at"]
+        )
         return self.api_key
 
     def mark_synced(self):

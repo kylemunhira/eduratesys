@@ -17,12 +17,14 @@ class BranchAdmin(admin.ModelAdmin):
         "customer",
         "manager",
         "is_online",
+        "api_key_expired",
+        "api_key_valid_until",
         "last_sync_at",
         "machine_id",
     )
-    list_filter = ("customer", "is_online")
+    list_filter = ("customer", "is_online", "api_key_expired")
     search_fields = ("name", "api_key", "machine_id")
-    readonly_fields = ("api_key", "last_sync_at")
+    readonly_fields = ("api_key", "last_sync_at", "api_key_expired")
 
 
 @admin.register(Product)

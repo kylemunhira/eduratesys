@@ -38,6 +38,11 @@ urlpatterns = [
     path("branches/<int:pk>/", catalog_views.branch_detail, name="branch_detail"),
     path("branches/<int:pk>/edit/", catalog_views.branch_edit, name="branch_edit"),
     path(
+        "branches/<int:pk>/renew-key/",
+        catalog_views.branch_renew_key,
+        name="branch_renew_key",
+    ),
+    path(
         "branches/<int:pk>/regenerate-key/",
         catalog_views.branch_regenerate_key,
         name="branch_regenerate_key",

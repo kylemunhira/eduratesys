@@ -1,5 +1,5 @@
 from datetime import timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
@@ -12,7 +12,7 @@ from accounts.roles import accessible_branches, filter_by_accessible_branches
 from catalog.models import Branch, Customer, Product
 from inventory.models import BranchStock, Dispatch
 from reports.period import parse_period_bounds
-from reports.views import _tons, pack_size_kg
+from reports.views import _quantize_tons, _tons, pack_size_kg
 from sales.models import Sale, SaleItem, SyncLog
 
 
@@ -89,9 +89,7 @@ def dashboard(request):
         limit = row.product.effective_threshold(threshold)
         if row.quantity <= limit:
             low_stock.append((row, limit))
-    inventory_tons = inventory_tons.quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
+    inventory_tons = _quantize_tons(inventory_tons)
 
     fast_moving = list(
         sale_items.values("product__code", "product__name")
@@ -122,8 +120,8 @@ def dashboard(request):
             category_totals.items(), key=lambda item: (-item[1], item[0])
         )
     ]
-    category_sold_total = sum(
-        (row["tons_sold"] for row in category_sold), Decimal("0")
+    category_sold_total = _quantize_tons(
+        sum((row["tons_sold"] for row in category_sold), Decimal("0"))
     )
 
     if selected_category:
@@ -211,7 +209,7 @@ def dashboard(request):
         "period_sales_count": period_sales_count,
         "period_sales_total": period_sales_total,
         "inventory_units": inventory_units,
-        "inventory_tons": f"{inventory_tons:.2f}",
+        "inventory_tons": f"{inventory_tons:.3f}",
         "category_sold": category_sold,
         "category_sold_total": category_sold_total,
         "low_stock": low_stock[:10],

@@ -6,7 +6,7 @@
     <p class="page-kicker">Catalog</p>
     <h1 class="page-title">Branches</h1>
   </div>
-  {% if is_admin %}
+  {% if can_create_branches %}
   <a class="btn btn-dark" href="{% url 'branch_create' %}">Add branch</a>
   {% endif %}
 </div>

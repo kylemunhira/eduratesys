@@ -20,6 +20,7 @@ from accounts.roles import (
 
 _PACK_SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*kg\b", re.IGNORECASE)
 COMPANY_NAME = "EDURATE INVESTMENTS (PVT) LTD"
+TONS_QUANT = Decimal("0.001")
 
 
 def _period_context(bounds):
@@ -39,12 +40,14 @@ def pack_size_kg(product_name: str) -> Decimal | None:
     return Decimal(match.group(1))
 
 
+def _quantize_tons(value: Decimal) -> Decimal:
+    return value.quantize(TONS_QUANT, rounding=ROUND_HALF_UP)
+
+
 def _tons(quantity, psize: Decimal | None) -> Decimal | None:
     if psize is None:
         return None
-    return (Decimal(quantity) * psize / Decimal(1000)).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
+    return _quantize_tons(Decimal(quantity) * psize / Decimal(1000))
 
 
 def _normalize_category(value):
@@ -65,7 +68,8 @@ def sales_report_data(request):
     (not one line per receipt), so qty/tons/amount are totals sold.
 
     Returns (bounds, raw_rows, by_category, by_sku, by_branch, totals).
-    Volume on summary sheets is tons (qty × pack kg / 1000).
+    Volume is tons from aggregated qty (qty × pack kg / 1000), rounded once
+    per product — not per receipt line — so totals match true weight.
     """
     bounds = parse_period_bounds(request)
     items = filter_by_accessible_branches(
@@ -91,10 +95,10 @@ def sales_report_data(request):
 
     # Key: (product_id, customer_id, branch_id, unit_price) → combined qty sold
     aggregated = {}
-    by_category = defaultdict(lambda: Decimal("0"))
-    by_sku = defaultdict(lambda: Decimal("0"))
-    by_branch = defaultdict(lambda: Decimal("0"))
-    total_tons = Decimal("0")
+    # qty by dimension → product name (pack size is derived from name)
+    qty_by_category_product = defaultdict(lambda: defaultdict(int))
+    qty_by_sku = defaultdict(int)
+    qty_by_branch_product = defaultdict(lambda: defaultdict(int))
     total_qty = 0
     total_amount = Decimal("0")
 
@@ -104,7 +108,6 @@ def sales_report_data(request):
         branch = sale.branch
         customer = branch.customer
         psize = pack_size_kg(product.name)
-        tons = _tons(item.quantity, psize)
         unit_price = Decimal(item.unit_price)
         amount = (Decimal(item.quantity) * unit_price).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -122,8 +125,6 @@ def sales_report_data(request):
                 "sale_reporting_group": reporting_group,
                 "account": "",
                 "customer_name": customer.name,
-                "tons": tons if tons is not None else Decimal("0"),
-                "has_tons": tons is not None,
                 "quantity": item.quantity,
                 "amount": amount,
                 "unit_price": unit_price,
@@ -133,27 +134,41 @@ def sales_report_data(request):
         else:
             bucket["quantity"] += item.quantity
             bucket["amount"] += amount
-            if tons is not None:
-                bucket["tons"] += tons
-                bucket["has_tons"] = True
             if sold_date > bucket["date"]:
                 bucket["date"] = sold_date
 
-        volume = tons if tons is not None else Decimal("0")
-        by_category[reporting_group] += volume
-        by_sku[product.name] += volume
-        by_branch[branch.name] += volume
-        total_tons += volume
+        qty_by_category_product[reporting_group][product.name] += item.quantity
+        qty_by_sku[product.name] += item.quantity
+        qty_by_branch_product[branch.name][product.name] += item.quantity
         total_qty += item.quantity
         total_amount += amount
 
+    def _volume_from_product_qty(product_qty):
+        """Sum tons from per-product totals (round once per product)."""
+        total = Decimal("0")
+        for name, qty in product_qty.items():
+            tons = _tons(qty, pack_size_kg(name))
+            if tons is not None:
+                total += tons
+        return total
+
+    by_category = {
+        cat: _volume_from_product_qty(products)
+        for cat, products in qty_by_category_product.items()
+    }
+    by_sku = {}
+    for name, qty in qty_by_sku.items():
+        tons = _tons(qty, pack_size_kg(name))
+        by_sku[name] = tons if tons is not None else Decimal("0")
+    by_branch = {
+        branch: _volume_from_product_qty(products)
+        for branch, products in qty_by_branch_product.items()
+    }
+    total_tons = _quantize_tons(sum(by_category.values(), Decimal("0")))
+
     raw_rows = []
     for bucket in aggregated.values():
-        tons = (
-            bucket["tons"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            if bucket["has_tons"]
-            else None
-        )
+        tons = _tons(bucket["quantity"], bucket["psize"])
         raw_rows.append(
             {
                 "date": bucket["date"],
@@ -299,9 +314,9 @@ def customer_stock_summary_data(user=None):
             "customer_name": r["branch__customer__name"],
             "customer_id": r["branch__customer_id"],
             "total_qty": r["total_qty"],
-            "total_tons_sold": sold_by_customer.get(
-                r["branch__customer_id"], Decimal("0")
-            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            "total_tons_sold": _quantize_tons(
+                sold_by_customer.get(r["branch__customer_id"], Decimal("0"))
+            ),
         }
         for r in stock_rows
     ]
@@ -691,9 +706,7 @@ def customer_tonnage_data(request):
         amount = (qty * unit_price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
         if qty_kg > 0:
-            tons = (qty_kg / Decimal(1000)).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
+            tons = _quantize_tons(qty_kg / Decimal(1000))
         else:
             tons = _tons(qty, pack_size_kg(line["item_name"])) or Decimal("0")
 
@@ -722,10 +735,8 @@ def customer_tonnage_data(request):
 
     for data in by_customer.values():
         qty = data["quantity"]
-        purchased = data["purchased_tons"].quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        )
-        sold = data["sold_tons"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        purchased = _quantize_tons(data["purchased_tons"])
+        sold = _quantize_tons(data["sold_tons"])
         amount = data["amount"].quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         rows.append(
             {
@@ -735,9 +746,7 @@ def customer_tonnage_data(request):
                 else int(qty),
                 "purchased_tons": purchased,
                 "sold_tons": sold,
-                "variance_tons": (purchased - sold).quantize(
-                    Decimal("0.01"), rounding=ROUND_HALF_UP
-                ),
+                "variance_tons": _quantize_tons(purchased - sold),
                 "amount": amount,
                 "grv_count": len(data["grv_ids"]),
                 "line_count": data["lines"],
@@ -757,13 +766,9 @@ def customer_tonnage_data(request):
     )
 
     totals = {
-        "purchased_tons": total_purchased.quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        ),
-        "sold_tons": total_sold.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
-        "variance_tons": (total_purchased - total_sold).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
-        ),
+        "purchased_tons": _quantize_tons(total_purchased),
+        "sold_tons": _quantize_tons(total_sold),
+        "variance_tons": _quantize_tons(total_purchased - total_sold),
         "quantity": total_qty.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         if total_qty % 1
         else int(total_qty),

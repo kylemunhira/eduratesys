@@ -1,5 +1,6 @@
 from django import forms
 from django.forms import inlineformset_factory
+from django.utils import timezone
 
 from catalog.models import Branch, Customer, Product
 from inventory.models import Dispatch, DispatchItem, StockLoss
@@ -23,6 +24,31 @@ class BranchForm(forms.ModelForm):
             "gps_lat",
             "gps_lng",
         )
+
+
+class BranchApiKeyRenewForm(forms.Form):
+    valid_until = forms.DateTimeField(
+        label="Valid until",
+        widget=forms.DateTimeInput(
+            attrs={"type": "datetime-local"},
+            format="%Y-%m-%dT%H:%M",
+        ),
+        input_formats=[
+            "%Y-%m-%dT%H:%M",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+        ],
+    )
+
+    def clean_valid_until(self):
+        valid_until = self.cleaned_data["valid_until"]
+        if timezone.is_naive(valid_until):
+            valid_until = timezone.make_aware(
+                valid_until, timezone.get_current_timezone()
+            )
+        if valid_until <= timezone.now():
+            raise forms.ValidationError("Valid until must be in the future.")
+        return valid_until
 
 
 class ProductForm(forms.ModelForm):

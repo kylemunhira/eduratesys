@@ -9,12 +9,14 @@ from accounts.models import log_audit
 from accounts.roles import (
     accessible_branches,
     user_can_access_branch,
+    user_can_create_branches,
     user_can_delete_branches,
     user_can_manage_customers,
+    user_can_view_branch_api_keys,
     user_is_admin,
 )
 
-from .forms import BranchForm, CustomerForm, ProductForm
+from .forms import BranchApiKeyRenewForm, BranchForm, CustomerForm, ProductForm
 from .models import Branch, Customer, Product
 
 
@@ -119,7 +121,8 @@ def branch_list(request):
 
 @login_required
 def branch_create(request):
-    if not _require_admin(request, "Only IT can create branches."):
+    if not user_can_create_branches(request.user):
+        messages.error(request, "Only the system admin can create branches.")
         return redirect("branch_list")
     form = BranchForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -134,7 +137,13 @@ def branch_detail(request, pk):
     branch = get_object_or_404(Branch.objects.select_related("customer"), pk=pk)
     if not _require_branch_access(request, branch):
         return redirect("branch_list")
-    return render(request, "catalog/branch_detail.html", {"branch": branch})
+    branch.refresh_api_key_expiry()
+    renew_form = BranchApiKeyRenewForm()
+    return render(
+        request,
+        "catalog/branch_detail.html",
+        {"branch": branch, "renew_form": renew_form},
+    )
 
 
 @login_required
@@ -159,12 +168,31 @@ def branch_edit(request, pk):
 
 @login_required
 @require_POST
+def branch_renew_key(request, pk):
+    branch = get_object_or_404(Branch, pk=pk)
+    if not _require_branch_access(request, branch):
+        return redirect("branch_list")
+    if not user_can_view_branch_api_keys(request.user):
+        messages.error(request, "Only the system admin can renew API keys.")
+        return redirect("branch_detail", pk=branch.pk)
+    form = BranchApiKeyRenewForm(request.POST)
+    if form.is_valid():
+        branch.renew_api_key(form.cleaned_data["valid_until"])
+        messages.success(request, "API key renewed — sync service keeps the same key.")
+    else:
+        for err in form.errors.get("valid_until", form.non_field_errors()):
+            messages.error(request, err)
+    return redirect("branch_detail", pk=branch.pk)
+
+
+@login_required
+@require_POST
 def branch_regenerate_key(request, pk):
     branch = get_object_or_404(Branch, pk=pk)
     if not _require_branch_access(request, branch):
         return redirect("branch_list")
-    if not user_is_admin(request.user):
-        messages.error(request, "Only IT can regenerate API keys.")
+    if not user_can_view_branch_api_keys(request.user):
+        messages.error(request, "Only the system admin can regenerate API keys.")
         return redirect("branch_detail", pk=branch.pk)
     branch.regenerate_api_key()
     messages.success(request, "API key regenerated.")
