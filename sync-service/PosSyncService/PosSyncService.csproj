@@ -5,6 +5,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-PosSyncService-ae797842-ccbd-48cf-a4ad-484a0278e26c</UserSecretsId>
+    <AssemblyTitle>SSMS POS Sync</AssemblyTitle>
+    <Product>SSMS</Product>
+    <Company>EDURATE INVESTMENTS (PVT) LTD</Company>
+    <Authors>ZIMHOPE INVESTMENTS</Authors>
+    <Copyright>Copyright © 2026 EDURATE INVESTMENTS (PVT) LTD</Copyright>
+    <Description>SSMS branch POS sync worker (sales + stock to portal API)</Description>
+    <Version>1.0.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

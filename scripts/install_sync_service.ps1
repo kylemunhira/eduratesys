@@ -34,8 +34,14 @@ if (-not $ServiceDir) {
 function Resolve-Nssm {
     param([string]$Explicit)
     if ($Explicit) {
-        if (-not (Test-Path $Explicit)) { throw "NSSM not found: $Explicit" }
-        return (Resolve-Path $Explicit).Path
+        $path = $Explicit
+        if ((Test-Path $path -PathType Container)) {
+            $path = Join-Path $path "nssm.exe"
+        }
+        if (-not (Test-Path $path -PathType Leaf)) {
+            throw "NSSM not found: $Explicit (expected nssm.exe)"
+        }
+        return (Resolve-Path $path).Path
     }
     $cmd = Get-Command nssm -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
@@ -51,7 +57,7 @@ function Resolve-Nssm {
 NSSM not found. Download from https://nssm.cc/download
 Extract nssm.exe and either:
   - add it to PATH, or
-  - pass -NssmPath 'C:\path\to\nssm.exe'
+  - pass -NssmPath 'C:\nssm\nssm.exe'
 "@
 }
 
