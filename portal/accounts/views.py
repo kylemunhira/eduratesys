@@ -16,6 +16,12 @@ from reports.views import _quantize_tons, _tons, pack_size_kg
 from sales.models import Sale, SaleItem, SyncLog
 
 
+def _format_money(value) -> str:
+    """Format monetary amount with space thousands: 65 990.25"""
+    amount = Decimal(value or 0).quantize(Decimal("0.01"))
+    return f"{amount:,.2f}".replace(",", " ")
+
+
 def _selected_category(request):
     return (request.GET.get("category") or "").strip() or None
 
@@ -91,11 +97,27 @@ def dashboard(request):
             low_stock.append((row, limit))
     inventory_tons = _quantize_tons(inventory_tons)
 
-    fast_moving = list(
-        sale_items.values("product__code", "product__name")
-        .annotate(units_sold=Sum("quantity"))
-        .order_by("-units_sold")[:8]
+    # Rank by tons sold (qty × pack kg / 1000), not bag count — otherwise
+    # small packs dominate even when heavier packs move more volume.
+    fast_rows = list(
+        sale_items.values("product__code", "product__name").annotate(
+            units_sold=Sum("quantity")
+        )
     )
+    fast_moving = sorted(
+        (
+            {
+                "product__code": row["product__code"],
+                "product__name": row["product__name"],
+                "tons_sold": (
+                    _tons(row["units_sold"], pack_size_kg(row["product__name"]))
+                    or Decimal("0")
+                ),
+            }
+            for row in fast_rows
+        ),
+        key=lambda row: (-row["tons_sold"], row["product__code"] or ""),
+    )[:8]
 
     # Category cards always cover the full period so users can switch filters.
     # Volume is tons (qty × pack kg / 1000), matching sales reports.
@@ -193,7 +215,7 @@ def dashboard(request):
             "labels": [
                 f"{row['product__code']} · {row['product__name']}" for row in fast_moving
             ],
-            "values": [row["units_sold"] for row in fast_moving],
+            "values": [float(row["tons_sold"]) for row in fast_moving],
         },
         "top_branches_chart": {
             "labels": top_branch_labels,
@@ -207,7 +229,7 @@ def dashboard(request):
         "total_branches": branches.count(),
         "total_products": products_qs.count(),
         "period_sales_count": period_sales_count,
-        "period_sales_total": period_sales_total,
+        "period_sales_total": _format_money(period_sales_total),
         "inventory_units": inventory_units,
         "inventory_tons": f"{inventory_tons:.3f}",
         "category_sold": category_sold,

@@ -42,7 +42,7 @@
     href="{% url 'report_sales' %}?view=category&period={{ period }}&date_from={{ date_from }}&date_to={{ date_to }}"
     title="Open sales by category"
   >
-    <div class="label">Sales Categories <span class="stat-sub">{{ period_label }}</span></div>
+    <div class="label">Sales Categories (sales count) <span class="stat-sub">{{ period_label }}</span></div>
     <div class="value">{{ period_sales_count }}</div>
   </a>
   <a
@@ -51,7 +51,7 @@
     title="Open sales report"
   >
     <div class="label">Total Sold <span class="stat-sub">{{ period_label }}</span></div>
-    <div class="value">{{ period_sales_total }}</div>
+    <div class="value">${{ period_sales_total }}</div>
   </a>
   <a class="stat" href="{% url 'report_stock' %}" title="Open stock balance">
     <div class="label">Inventory units</div>
@@ -94,7 +94,7 @@
 </section>
 
 <div class="dash-grid chart-row">
-  <section class="card-panel chart-panel chart-panel--legend">
+  <section class="card-panel chart-panel">
     <h2 class="panel-title">Fast moving stock <span class="panel-sub">{{ period_label }}</span></h2>
     {% if fast_moving_chart.values %}
     <div class="chart-wrap">
@@ -253,7 +253,7 @@
       data: {
         labels: fastData.labels,
         datasets: [{
-          label: "Units sold",
+          label: "Tons sold",
           data: fastData.values,
           backgroundColor: fills,
           borderColor: strokes,
@@ -264,29 +264,16 @@
       options: {
         ...baseOptions,
         plugins: {
-          legend: {
-            display: true,
-            position: "bottom",
-            align: "start",
-            labels: {
-              boxWidth: 12,
-              boxHeight: 12,
-              padding: 10,
-              color: muted,
-              font: { size: 11 },
-              generateLabels(chart) {
-                const labels = chart.data.labels || [];
-                const ds = chart.data.datasets[0] || {};
-                const bg = ds.backgroundColor || [];
-                const bd = ds.borderColor || [];
-                return labels.map((text, i) => ({
-                  text,
-                  fillStyle: Array.isArray(bg) ? bg[i] : bg,
-                  strokeStyle: Array.isArray(bd) ? bd[i] : bd,
-                  lineWidth: 1,
-                  hidden: false,
-                  index: i,
-                }));
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title(items) {
+                const i = items[0]?.dataIndex;
+                return i == null ? "" : (fastData.labels[i] || "");
+              },
+              label(ctx) {
+                const n = Number(ctx.raw);
+                return ` ${n.toLocaleString(undefined, { maximumFractionDigits: 3 })} t`;
               },
             },
           },
@@ -301,7 +288,9 @@
             ...baseOptions.scales.y,
             ticks: {
               ...baseOptions.scales.y.ticks,
-              precision: 0,
+              callback: (value) => Number(value).toLocaleString(undefined, {
+                maximumFractionDigits: 2,
+              }),
             },
           },
         },
