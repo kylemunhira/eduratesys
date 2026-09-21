@@ -46,7 +46,7 @@ class UserProfile(models.Model):
         "catalog.Branch",
         blank=True,
         related_name="portal_users",
-        help_text="Required for Sales Admin and Sales. Ignored for org-wide roles.",
+        help_text="Required for Sales Admin, Sales, and Stockist. Ignored for org-wide roles.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

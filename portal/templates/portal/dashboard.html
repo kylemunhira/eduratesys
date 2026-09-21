@@ -7,7 +7,12 @@
     <h1 class="page-title">Stock pulse</h1>
     <p class="page-lead">Live view of customers, branch inventory, and POS sync health.</p>
   </div>
-  <a class="btn btn-dark" href="{% url 'dispatch_create' %}">New dispatch</a>
+  {% if can_create_dispatch %}
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-dark topbar-btn" href="{% url 'dispatch_create' %}">Manual draft</a>
+    <a class="btn btn-dark topbar-btn" href="{% url 'dispatch_upload' %}">Upload Excel</a>
+  </div>
+  {% endif %}
 </div>
 
 <form method="get" class="row g-2 align-items-end mb-3 period-filter">
@@ -53,13 +58,21 @@
     <div class="label">Total Sold <span class="stat-sub">{{ period_label }}</span></div>
     <div class="value">${{ period_sales_total }}</div>
   </a>
-  <a class="stat" href="{% url 'report_stock' %}" title="Open stock balance">
-    <div class="label">Inventory units</div>
+  <a
+    class="stat"
+    href="{% url 'report_stock' %}?view=detail&period={{ period }}&date_from={{ date_from }}&date_to={{ date_to }}"
+    title="Open stock balance for this closing date"
+  >
+    <div class="label">Inventory units <span class="stat-sub">as of {{ date_to }}</span></div>
     <div class="value">{{ inventory_units }}</div>
   </a>
-  <a class="stat" href="{% url 'report_stock' %}" title="Open stock balance">
-    <div class="label">Inventory tons</div>
-    <div class="value">{{ inventory_tons|default:"0.000" }}</div>
+  <a
+    class="stat"
+    href="{% url 'report_customer_stock' %}"
+    title="Open customer stock with metric tons and stock value"
+  >
+    <div class="label">Stock value <span class="stat-sub">as of {{ date_to }}</span></div>
+    <div class="value">${{ stock_value }}</div>
   </a>
 </div>
 

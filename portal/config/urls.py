@@ -58,8 +58,38 @@ urlpatterns = [
     # Inventory
     path("stock/", inventory_views.stock_list, name="stock_list"),
     path("dispatches/", inventory_views.dispatch_list, name="dispatch_list"),
+    path(
+        "dispatches/upload/",
+        inventory_views.dispatch_upload,
+        name="dispatch_upload",
+    ),
+    path(
+        "dispatches/upload/template/",
+        inventory_views.dispatch_upload_template,
+        name="dispatch_upload_template",
+    ),
+    path(
+        "dispatches/upload/preview/",
+        inventory_views.dispatch_upload_preview,
+        name="dispatch_upload_preview",
+    ),
     path("dispatches/new/", inventory_views.dispatch_create, name="dispatch_create"),
+    path(
+        "dispatches/<int:pk>/edit/",
+        inventory_views.dispatch_edit,
+        name="dispatch_edit",
+    ),
     path("dispatches/<int:pk>/", inventory_views.dispatch_detail, name="dispatch_detail"),
+    path(
+        "dispatches/<int:pk>/send-git/",
+        inventory_views.dispatch_send_git,
+        name="dispatch_send_git",
+    ),
+    path(
+        "dispatches/<int:pk>/receive/",
+        inventory_views.dispatch_receive,
+        name="dispatch_receive",
+    ),
     path(
         "dispatches/<int:pk>/approve/",
         inventory_views.dispatch_approve,
@@ -73,6 +103,11 @@ urlpatterns = [
         "reports/customer-stock/",
         report_views.customer_stock_summary,
         name="report_customer_stock",
+    ),
+    path(
+        "reports/customer-stock/<int:customer_id>/",
+        report_views.customer_stock_detail,
+        name="report_customer_stock_detail",
     ),
     path(
         "reports/customer-tonnage/",

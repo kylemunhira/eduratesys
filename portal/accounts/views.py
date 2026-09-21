@@ -12,7 +12,7 @@ from accounts.roles import accessible_branches, filter_by_accessible_branches
 from catalog.models import Branch, Customer, Product
 from inventory.models import BranchStock, Dispatch
 from reports.period import parse_period_bounds
-from reports.views import _quantize_tons, _tons, pack_size_kg
+from reports.views import _quantize_tons, _tons, closing_stock_quantities, pack_size_kg
 from sales.models import Sale, SaleItem, SyncLog
 
 
@@ -84,18 +84,45 @@ def dashboard(request):
         if not b.last_sync_at or b.last_sync_at < offline_cutoff
     ]
 
+    # Closing stock as of date_to (shared calculator with stock balance report).
+    closing_qty = closing_stock_quantities(request.user, end_dt)
+    product_ids = {pid for _, pid in closing_qty}
+    products_by_id = {
+        p.pk: p for p in Product.objects.filter(pk__in=product_ids)
+    }
+    if selected_category:
+        if selected_category == "Uncategorized":
+            products_by_id = {
+                pk: p
+                for pk, p in products_by_id.items()
+                if not (p.category or "").strip()
+            }
+        else:
+            products_by_id = {
+                pk: p
+                for pk, p in products_by_id.items()
+                if (p.category or "").strip() == selected_category
+            }
+        closing_qty = {
+            key: qty
+            for key, qty in closing_qty.items()
+            if key[1] in products_by_id
+        }
+
     low_stock = []
     inventory_units = 0
-    inventory_tons = Decimal("0")
+    stock_value = Decimal("0")
     for row in stock_qs:
-        inventory_units += row.quantity
-        tons = _tons(row.quantity, pack_size_kg(row.product.name))
-        if tons is not None:
-            inventory_tons += tons
         limit = row.product.effective_threshold(threshold)
         if row.quantity <= limit:
             low_stock.append((row, limit))
-    inventory_tons = _quantize_tons(inventory_tons)
+
+    for (_branch_id, product_id), qty in closing_qty.items():
+        inventory_units += qty
+        product = products_by_id.get(product_id)
+        if not product:
+            continue
+        stock_value += Decimal(qty) * Decimal(product.selling_price or 0)
 
     # Rank by tons sold (qty × pack kg / 1000), not bag count — otherwise
     # small packs dominate even when heavier packs move more volume.
@@ -231,7 +258,7 @@ def dashboard(request):
         "period_sales_count": period_sales_count,
         "period_sales_total": _format_money(period_sales_total),
         "inventory_units": inventory_units,
-        "inventory_tons": f"{inventory_tons:.3f}",
+        "stock_value": _format_money(stock_value),
         "category_sold": category_sold,
         "category_sold_total": category_sold_total,
         "low_stock": low_stock[:10],

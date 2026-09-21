@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block title %}Upload dispatch{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <p class="page-kicker">Dispatches</p>
+    <h1 class="page-title">Upload Excel dispatch</h1>
+    <p class="page-lead">
+      Sales Admin only. Upload a product list, preview matches, then create a draft to review before sending to GIT.
+    </p>
+  </div>
+</div>
+<div class="card-panel" style="max-width:720px">
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form|crispy }}
+    <p class="form-text text-muted mb-3">
+      Required columns: <strong>Product Code</strong> (or SKU / Barcode) and <strong>Quantity</strong>.
+      Optional: Product Name. Unmatched rows are shown on the next screen and skipped.
+      <a href="{% url 'dispatch_upload_template' %}">Download Excel template</a>.
+    </p>
+    <button class="btn btn-dark" type="submit">Parse &amp; preview</button>
+    <a class="btn btn-outline-success" href="{% url 'dispatch_upload_template' %}">
+      <i class="bi bi-file-earmark-excel"></i> Download template
+    </a>
+    <a class="btn btn-link" href="{% url 'dispatch_list' %}">Cancel</a>
+  </form>
+
+  {% if parse_errors %}
+  <hr>
+  <h2 class="h6">Parse issues</h2>
+  <table class="table table-sm">
+    <thead><tr><th>Code</th><th>Qty</th><th>Issue</th></tr></thead>
+    <tbody>
+      {% for line in parse_errors %}
+        {% if not line.matched %}
+        <tr>
+          <td class="mono">{{ line.code }}</td>
+          <td>{{ line.quantity }}</td>
+          <td class="text-danger">{{ line.error }}</td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

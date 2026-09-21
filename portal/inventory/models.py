@@ -112,7 +112,8 @@ def ingest_stock_snapshot(*, branch: Branch, items: list[dict]) -> dict:
 class Dispatch(models.Model):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
-        APPROVED = "approved", "Approved"
+        GIT = "git", "GIT (Good in transit)"
+        APPROVED = "approved", "Received"
         CANCELLED = "cancelled", "Cancelled"
 
     reference = models.CharField(max_length=40, unique=True, blank=True)
@@ -133,6 +134,14 @@ class Dispatch(models.Model):
         on_delete=models.SET_NULL,
         related_name="dispatches_created",
     )
+    dispatched_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="dispatches_sent",
+    )
+    dispatched_at = models.DateTimeField(null=True, blank=True)
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -159,11 +168,50 @@ class Dispatch(models.Model):
             super().save(update_fields=["reference"])
 
     @transaction.atomic
-    def approve(self, user=None):
+    def send_to_git(self, user=None):
+        """Sales Admin confirms details → Good In Transit (no stock change)."""
+        if self.status == self.Status.GIT:
+            raise ValidationError("Dispatch is already in transit (GIT).")
         if self.status == self.Status.APPROVED:
-            raise ValidationError("Dispatch is already approved.")
+            raise ValidationError("Received dispatch cannot be sent to GIT.")
         if self.status == self.Status.CANCELLED:
-            raise ValidationError("Cancelled dispatch cannot be approved.")
+            raise ValidationError("Cancelled dispatch cannot be sent to GIT.")
+        if self.status != self.Status.DRAFT:
+            raise ValidationError("Only draft dispatches can be sent to GIT.")
+        items = list(self.items.all())
+        if not items:
+            raise ValidationError("Dispatch has no items.")
+        self.status = self.Status.GIT
+        self.dispatched_by = user
+        self.dispatched_at = timezone.now()
+        self.save(
+            update_fields=[
+                "status",
+                "dispatched_by",
+                "dispatched_at",
+                "updated_at",
+            ]
+        )
+        log_audit(
+            actor=user,
+            action="dispatch_git",
+            entity="Dispatch",
+            entity_id=self.pk,
+            details=f"Sent {self.reference} to GIT for {self.branch}",
+        )
+        return self
+
+    @transaction.atomic
+    def receive(self, user=None):
+        """Stockist confirms delivery note → Received and branch stock updated."""
+        if self.status == self.Status.APPROVED:
+            raise ValidationError("Dispatch is already received.")
+        if self.status == self.Status.CANCELLED:
+            raise ValidationError("Cancelled dispatch cannot be received.")
+        if self.status != self.Status.GIT:
+            raise ValidationError(
+                "Only GIT (good in transit) dispatches can be received."
+            )
         items = list(self.items.select_related("product"))
         if not items:
             raise ValidationError("Dispatch has no items.")
@@ -177,12 +225,16 @@ class Dispatch(models.Model):
         )
         log_audit(
             actor=user,
-            action="approve",
+            action="receive",
             entity="Dispatch",
             entity_id=self.pk,
-            details=f"Approved {self.reference} to {self.branch}",
+            details=f"Received {self.reference} at {self.branch}; stock updated",
         )
         return self
+
+    def approve(self, user=None):
+        """Backward-compatible alias for receive()."""
+        return self.receive(user=user)
 
 
 class DispatchItem(models.Model):

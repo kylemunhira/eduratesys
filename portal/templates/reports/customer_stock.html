@@ -1,28 +1,69 @@
 {% extends "base.html" %}
 {% block title %}Customer stock{% endblock %}
 {% block content %}
-<div class="topbar"><h1 class="page-title">Customer stock summary</h1></div>
+<div class="topbar">
+  <div>
+    <p class="page-kicker">Reports</p>
+    <h1 class="page-title">Customer stock summary</h1>
+    <p class="page-lead">Current stock by customer with metric tons and stock value. Open a customer for branch and product detail.</p>
+  </div>
+</div>
 <div class="card-panel">
   {% include "includes/report_actions.html" with export_url="export_customer_stock" %}
-  <table class="table table-sm mb-0">
-    <thead>
-      <tr>
-        <th>Customer</th>
-        <th class="text-end">Total units</th>
-        <th class="text-end">Total tons sold</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for r in rows %}
-      <tr>
-        <td>{{ r.customer_name }}</td>
-        <td class="text-end">{{ r.total_qty }}</td>
-        <td class="text-end">{{ r.total_tons_sold }}</td>
-      </tr>
-    {% empty %}
-      <tr><td colspan="3" class="text-muted">No stock.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+
+  <p class="small text-muted mb-2">
+    {{ totals.customers }} customer(s)
+    · Units: <strong>{{ totals.quantity }}</strong>
+    · Metric tons: <strong>{{ totals.tons }}</strong>
+    · Stock value: <strong>${{ totals.stock_value }}</strong>
+  </p>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th class="text-end">Branches</th>
+          <th class="text-end">Units</th>
+          <th class="text-end">Metric Tons</th>
+          <th class="text-end">Stock Value</th>
+          <th class="text-end">Tons sold</th>
+          <th class="text-end no-print">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td>
+            <a href="{% url 'report_customer_stock_detail' r.customer_id %}">{{ r.customer_name }}</a>
+          </td>
+          <td class="text-end">{{ r.branch_count }}</td>
+          <td class="text-end">{{ r.total_qty }}</td>
+          <td class="text-end">{{ r.tons }}</td>
+          <td class="text-end">${{ r.stock_value }}</td>
+          <td class="text-end">{{ r.total_tons_sold }}</td>
+          <td class="text-end no-print">
+            <a class="btn btn-sm btn-outline-dark" href="{% url 'report_customer_stock_detail' r.customer_id %}">View</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="text-muted">No stock.</td></tr>
+      {% endfor %}
+      </tbody>
+      {% if rows %}
+      <tfoot>
+        <tr class="fw-semibold">
+          <td>Grand total</td>
+          <td></td>
+          <td class="text-end">{{ totals.quantity }}</td>
+          <td class="text-end">{{ totals.tons }}</td>
+          <td class="text-end">${{ totals.stock_value }}</td>
+          <td></td>
+          <td class="no-print"></td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
 </div>
 {% endblock %}

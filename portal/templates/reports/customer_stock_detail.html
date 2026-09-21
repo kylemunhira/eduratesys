@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ customer.name }} — stock{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <p class="page-kicker">Reports · Customer stock</p>
+    <h1 class="page-title">{{ customer.name }}</h1>
+    <p class="page-lead">Branches, on-hand stock, metric tons, and stock value for this customer.</p>
+  </div>
+  <div class="d-flex gap-2 no-print">
+    <a class="btn btn-sm btn-outline-dark" href="{% url 'report_customer_stock' %}">Back to summary</a>
+  </div>
+</div>
+
+<div class="card-panel">
+  <p class="small text-muted mb-3">
+    {{ totals.branch_count }} branch(es)
+    · Units: <strong>{{ totals.quantity }}</strong>
+    · Metric tons: <strong>{{ totals.tons }}</strong>
+    · Stock value: <strong>${{ totals.stock_value }}</strong>
+  </p>
+
+  <h2 class="h6 mb-2">Branches</h2>
+  <div class="table-responsive mb-4">
+    <table class="table table-sm table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Branch</th>
+          <th class="text-end">Units</th>
+          <th class="text-end">Metric Tons</th>
+          <th class="text-end">Stock Value</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for b in by_branch %}
+        <tr>
+          <td>{{ b.branch_name }}</td>
+          <td class="text-end">{{ b.quantity }}</td>
+          <td class="text-end">{{ b.tons }}</td>
+          <td class="text-end">${{ b.stock_value }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="text-muted">No branch stock for this customer.</td></tr>
+      {% endfor %}
+      </tbody>
+      {% if by_branch %}
+      <tfoot>
+        <tr class="fw-semibold">
+          <td>Total</td>
+          <td class="text-end">{{ totals.quantity }}</td>
+          <td class="text-end">{{ totals.tons }}</td>
+          <td class="text-end">${{ totals.stock_value }}</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+
+  <h2 class="h6 mb-2">Stock by product</h2>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Branch</th>
+          <th>Product</th>
+          <th class="text-end">Qty</th>
+          <th class="text-end">Metric Tons</th>
+          <th class="text-end">Unit price</th>
+          <th class="text-end">Stock Value</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in lines %}
+        <tr>
+          <td>{{ r.branch_name }}</td>
+          <td>{{ r.product_code }} — {{ r.product_name }}</td>
+          <td class="text-end">{{ r.quantity }}</td>
+          <td class="text-end">{% if r.tons is not None %}{{ r.tons }}{% else %}—{% endif %}</td>
+          <td class="text-end">${{ r.unit_price }}</td>
+          <td class="text-end">${{ r.stock_value }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="text-muted">No stock rows.</td></tr>
+      {% endfor %}
+      </tbody>
+      {% if lines %}
+      <tfoot>
+        <tr class="fw-semibold">
+          <td colspan="2">Total</td>
+          <td class="text-end">{{ totals.quantity }}</td>
+          <td class="text-end">{{ totals.tons }}</td>
+          <td></td>
+          <td class="text-end">${{ totals.stock_value }}</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+</div>
+{% endblock %}

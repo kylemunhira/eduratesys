@@ -1,24 +1,171 @@
 {% extends "base.html" %}
 {% block title %}Stock balance{% endblock %}
 {% block content %}
-<div class="topbar"><h1 class="page-title">Stock balance report</h1></div>
+<div class="topbar">
+  <div>
+    <p class="page-kicker">Reports</p>
+    <h1 class="page-title">Stock balance</h1>
+    <p class="page-lead">Closing stock quantity, metric tons, and stock value (selling price × qty) as of the To date.</p>
+  </div>
+</div>
 <div class="card-panel">
+  <form method="get" class="row g-2 align-items-end mb-3">
+    <input type="hidden" name="view" value="{{ view }}">
+    {% include "includes/period_fields.html" %}
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-0">Branch</label>
+      <select name="branch" class="form-select form-select-sm">
+        <option value="">All branches</option>
+        {% for b in branches %}
+          <option value="{{ b.pk }}" {% if selected_branch == b.pk|stringformat:"s" %}selected{% endif %}>{{ b.customer.name }} / {{ b.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-sm btn-outline-dark" type="submit">Apply</button>
+    </div>
+  </form>
+
   {% include "includes/report_actions.html" with export_url="export_stock_balance" %}
-  <table class="table table-sm table-hover mb-0">
-    <thead><tr><th>Customer</th><th>Branch</th><th>Code</th><th>Product</th><th>Qty</th></tr></thead>
-    <tbody>
-    {% for s in stocks %}
-      <tr>
-        <td>{{ s.branch.customer.name }}</td>
-        <td>{{ s.branch.name }}</td>
-        <td class="mono">{{ s.product.code }}</td>
-        <td>{{ s.product.name }}</td>
-        <td>{{ s.quantity }}</td>
-      </tr>
-    {% empty %}
-      <tr><td colspan="5" class="text-muted">No stock.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+
+  <p class="small text-muted mb-2">
+    Closing as of <strong>{{ date_to_display|date:"j/n/Y" }}</strong>
+    · Units: <strong>{{ totals.quantity }}</strong>
+    · Metric tons: <strong>{{ totals.tons }}</strong>
+    · Stock value: <strong>${{ totals.stock_value }}</strong>
+  </p>
+
+  <ul class="nav nav-tabs sales-report-tabs mb-3 no-print">
+    <li class="nav-item">
+      <a class="nav-link{% if view == 'detail' %} active{% endif %}"
+         href="?view=detail&period={{ period }}&date_from={{ date_from }}&date_to={{ date_to }}&branch={{ selected_branch }}">By branch × SKU</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link{% if view == 'sku' %} active{% endif %}"
+         href="?view=sku&period={{ period }}&date_from={{ date_from }}&date_to={{ date_to }}&branch={{ selected_branch }}">By product</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link{% if view == 'branch' %} active{% endif %}"
+         href="?view=branch&period={{ period }}&date_from={{ date_from }}&date_to={{ date_to }}&branch={{ selected_branch }}">By branch</a>
+    </li>
+  </ul>
+
+  {% if view == "detail" %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th>Branch</th>
+          <th>Code</th>
+          <th>Product</th>
+          <th class="text-end">Qty</th>
+          <th class="text-end">Metric Tons</th>
+          <th class="text-end">Unit price</th>
+          <th class="text-end">Stock Value</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in lines %}
+        <tr>
+          <td>{{ r.customer_name }}</td>
+          <td>{{ r.branch_name }}</td>
+          <td class="mono">{{ r.product_code }}</td>
+          <td>{{ r.product_name }}</td>
+          <td class="text-end">{{ r.quantity }}</td>
+          <td class="text-end">{% if r.tons is not None %}{{ r.tons }}{% else %}—{% endif %}</td>
+          <td class="text-end">{{ r.unit_price }}</td>
+          <td class="text-end">{{ r.stock_value }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="text-muted">No stock as of this closing date.</td></tr>
+      {% endfor %}
+      </tbody>
+      {% if lines %}
+      <tfoot>
+        <tr>
+          <td colspan="4" class="text-end fw-semibold">Grand Total</td>
+          <td class="text-end fw-semibold">{{ totals.quantity }}</td>
+          <td class="text-end fw-semibold">{{ totals.tons }}</td>
+          <td></td>
+          <td class="text-end fw-semibold">{{ totals.stock_value }}</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+
+  {% elif view == "sku" %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th class="text-end">Qty</th>
+          <th class="text-end">Metric Tons</th>
+          <th class="text-end">Stock Value</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in by_sku %}
+        <tr>
+          <td>{{ r.label }}</td>
+          <td class="text-end">{{ r.quantity }}</td>
+          <td class="text-end">{{ r.tons }}</td>
+          <td class="text-end">{{ r.stock_value }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="text-muted">No stock as of this closing date.</td></tr>
+      {% endfor %}
+      </tbody>
+      {% if by_sku %}
+      <tfoot>
+        <tr>
+          <td class="fw-semibold">Grand Total</td>
+          <td class="text-end fw-semibold">{{ totals.quantity }}</td>
+          <td class="text-end fw-semibold">{{ totals.tons }}</td>
+          <td class="text-end fw-semibold">{{ totals.stock_value }}</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+
+  {% else %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Branch</th>
+          <th class="text-end">Qty</th>
+          <th class="text-end">Metric Tons</th>
+          <th class="text-end">Stock Value</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in by_branch %}
+        <tr>
+          <td>{{ r.label }}</td>
+          <td class="text-end">{{ r.quantity }}</td>
+          <td class="text-end">{{ r.tons }}</td>
+          <td class="text-end">{{ r.stock_value }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="text-muted">No stock as of this closing date.</td></tr>
+      {% endfor %}
+      </tbody>
+      {% if by_branch %}
+      <tfoot>
+        <tr>
+          <td class="fw-semibold">Grand Total</td>
+          <td class="text-end fw-semibold">{{ totals.quantity }}</td>
+          <td class="text-end fw-semibold">{{ totals.tons }}</td>
+          <td class="text-end fw-semibold">{{ totals.stock_value }}</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

@@ -11,6 +11,7 @@ ROLE_BUSINESS_HEAD = "Business Head"
 ROLE_COMMERCIAL_MANAGER = "Commercial Manager"
 ROLE_SALES_ADMIN = "Sales Admin"
 ROLE_SALES = "Sales"
+ROLE_STOCKIST = "Stockist"
 
 # Hidden system admin: full portal access including Customers; never listed under Users.
 SYSTEM_ADMIN_USERNAME = "ZImhope"
@@ -22,11 +23,17 @@ ROLE_CHOICES = (
     (ROLE_COMMERCIAL_MANAGER, "Commercial Manager"),
     (ROLE_SALES_ADMIN, "Sales Admin"),
     (ROLE_SALES, "Sales"),
+    (ROLE_STOCKIST, "Stockist"),
 )
 
-# Org-wide: see every branch. Sales roles are limited to assigned branches.
+# Org-wide: see every branch. Sales / Stockist roles are limited to assigned branches.
 ALL_BRANCHES_ROLES = frozenset(
     {ROLE_IT, ROLE_BUSINESS_HEAD, ROLE_COMMERCIAL_MANAGER}
+)
+
+# Branch-scoped portal operators (must be assigned at least one branch).
+BRANCH_SCOPED_ROLES = frozenset(
+    {ROLE_SALES_ADMIN, ROLE_SALES, ROLE_STOCKIST}
 )
 
 # Legacy group names kept for seed / existing DBs.
@@ -197,8 +204,52 @@ def sync_user_groups(user, role: str):
         user.groups.add(Group.objects.get(name=ADMIN_GROUP))
         if not user.is_staff:
             type(user).objects.filter(pk=user.pk).update(is_staff=True)
-    elif role in (ROLE_SALES_ADMIN, ROLE_SALES):
+    elif role in (ROLE_SALES_ADMIN, ROLE_SALES, ROLE_STOCKIST):
         user.groups.add(Group.objects.get(name=SUPPLIER_GROUP))
+
+
+def user_can_create_dispatch(user) -> bool:
+    """Sales Admin (supra) may upload / create / edit drafts and send to GIT."""
+    if not user or not user.is_authenticated:
+        return False
+    if is_system_admin_user(user) or user.is_superuser:
+        return True
+    return user_role(user) == ROLE_SALES_ADMIN
+
+
+def user_can_receive_dispatch(user) -> bool:
+    """Stockists confirm receipt (GIT → received) for their branch."""
+    if not user or not user.is_authenticated:
+        return False
+    if is_system_admin_user(user) or user.is_superuser:
+        return True
+    return user_role(user) == ROLE_STOCKIST
+
+
+def require_dispatch_creator(view_func):
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not user_can_create_dispatch(request.user):
+            messages.error(
+                request, "Only Sales Admin can create or dispatch products."
+            )
+            return redirect("dispatch_list")
+        return view_func(request, *args, **kwargs)
+
+    return _wrapped
+
+
+def require_dispatch_receiver(view_func):
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not user_can_receive_dispatch(request.user):
+            messages.error(
+                request, "Only Stockists can confirm receipt of dispatches."
+            )
+            return redirect("dispatch_list")
+        return view_func(request, *args, **kwargs)
+
+    return _wrapped
 
 
 def require_user_manager(view_func):

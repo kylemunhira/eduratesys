@@ -5,23 +5,71 @@
   <div>
     <p class="page-kicker">Inventory</p>
     <h1 class="page-title">Dispatches</h1>
+    <p class="page-lead">
+      {% if can_receive_dispatch and not can_create_dispatch %}
+        Confirm receipt of GIT deliveries for your branch when the delivery note arrives.
+      {% else %}
+        Upload or create a draft, review details, send to GIT, then wait for the stockist to receive.
+      {% endif %}
+    </p>
   </div>
-  <a class="btn btn-dark" href="{% url 'dispatch_create' %}">New dispatch</a>
+  {% if can_create_dispatch %}
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-dark topbar-btn" href="{% url 'dispatch_create' %}">Manual draft</a>
+    <a class="btn btn-dark topbar-btn" href="{% url 'dispatch_upload' %}">Upload Excel</a>
+  </div>
+  {% endif %}
 </div>
 <div class="card-panel">
+  <form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+      <label class="form-label form-label-sm mb-0">Status</label>
+      <select name="status" class="form-select form-select-sm">
+        <option value="">All statuses</option>
+        {% for value, label in status_choices %}
+          <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-sm btn-outline-dark" type="submit">Filter</button>
+    </div>
+  </form>
   <table class="table table-hover mb-0">
-    <thead><tr><th>Ref</th><th>Customer</th><th>Branch</th><th>Status</th><th>Created</th></tr></thead>
+    <thead>
+      <tr>
+        <th>Ref</th>
+        <th>Customer</th>
+        <th>Branch</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th></th>
+      </tr>
+    </thead>
     <tbody>
     {% for d in dispatches %}
       <tr>
         <td><a href="{% url 'dispatch_detail' d.pk %}">{{ d.reference }}</a></td>
         <td>{{ d.customer.name }}</td>
         <td>{{ d.branch.name }}</td>
-        <td>{{ d.get_status_display }}</td>
+        <td>
+          {% if d.status == "git" %}
+            <span class="badge text-bg-warning">{{ d.get_status_display }}</span>
+          {% elif d.status == "approved" %}
+            <span class="badge text-bg-success">{{ d.get_status_display }}</span>
+          {% elif d.status == "draft" %}
+            <span class="badge text-bg-secondary">{{ d.get_status_display }}</span>
+          {% else %}
+            <span class="badge text-bg-light">{{ d.get_status_display }}</span>
+          {% endif %}
+        </td>
         <td class="small">{{ d.created_at }}</td>
+        <td class="text-end">
+          <a class="btn btn-sm btn-outline-dark" href="{% url 'dispatch_detail' d.pk %}">Open</a>
+        </td>
       </tr>
     {% empty %}
-      <tr><td colspan="5" class="text-muted">No dispatches.</td></tr>
+      <tr><td colspan="6" class="text-muted">No dispatches.</td></tr>
     {% endfor %}
     </tbody>
   </table>

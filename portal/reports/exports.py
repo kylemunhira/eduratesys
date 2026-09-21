@@ -7,7 +7,7 @@ from django.http import HttpResponse
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
-from inventory.models import BranchStock, Dispatch
+from inventory.models import Dispatch
 from reports.period import parse_period_bounds
 from sales.models import SyncLog
 from accounts.roles import filter_by_accessible_branches
@@ -58,19 +58,83 @@ def _export(request, headers, rows, sheet_title="Report"):
 
 @login_required
 def export_stock_balance(request):
-    stocks = filter_by_accessible_branches(
-        BranchStock.objects.select_related(
-            "branch", "branch__customer", "product"
-        ),
-        request.user,
-    )
-    headers = ["Customer", "Branch", "Code", "Product", "Qty"]
-    rows = [
-        [s.branch.customer.name, s.branch.name, s.product.code, s.product.name, s.quantity]
-        for s in stocks
-    ]
-    return _export(request, headers, rows, "Stock Balance")
+    from reports.views import stock_balance_data
 
+    # Respects the same ?branch= / period filters as the on-screen report.
+    _bounds, lines, by_sku, by_branch, totals = stock_balance_data(request)
+    view = (request.GET.get("view") or "detail").lower()
+
+    def _tons_cell(value):
+        return float(value) if value is not None else ""
+
+    if view == "sku":
+        headers = ["Product", "Qty", "Metric Tons", "Stock Value"]
+        rows = [
+            [r["label"], r["quantity"], _tons_cell(r["tons"]), float(r["stock_value"])]
+            for r in by_sku
+        ]
+        rows.append(
+            [
+                "Grand Total",
+                totals["quantity"],
+                _tons_cell(totals["tons"]),
+                float(totals["stock_value"]),
+            ]
+        )
+        title = "Stock Balance by Product"
+    elif view == "branch":
+        headers = ["Branch", "Qty", "Metric Tons", "Stock Value"]
+        rows = [
+            [r["label"], r["quantity"], _tons_cell(r["tons"]), float(r["stock_value"])]
+            for r in by_branch
+        ]
+        rows.append(
+            [
+                "Grand Total",
+                totals["quantity"],
+                _tons_cell(totals["tons"]),
+                float(totals["stock_value"]),
+            ]
+        )
+        title = "Stock Balance by Branch"
+    else:
+        headers = [
+            "Customer",
+            "Branch",
+            "Code",
+            "Product",
+            "Qty",
+            "Metric Tons",
+            "Unit Price",
+            "Stock Value",
+        ]
+        rows = [
+            [
+                r["customer_name"],
+                r["branch_name"],
+                r["product_code"],
+                r["product_name"],
+                r["quantity"],
+                _tons_cell(r["tons"]),
+                float(r["unit_price"]),
+                float(r["stock_value"]),
+            ]
+            for r in lines
+        ]
+        rows.append(
+            [
+                "Grand Total",
+                "",
+                "",
+                "",
+                totals["quantity"],
+                _tons_cell(totals["tons"]),
+                "",
+                float(totals["stock_value"]),
+            ]
+        )
+        title = "Stock Balance"
+    return _export(request, headers, rows, title)
 
 # ── Dispatch report ────────────────────────────────────────────
 
@@ -236,9 +300,23 @@ def export_customer_stock(request):
     from reports.views import customer_stock_summary_data
 
     data = customer_stock_summary_data(request.user)
-    headers = ["Customer", "Total Units", "Total Tons Sold"]
+    headers = [
+        "Customer",
+        "Branches",
+        "Units",
+        "Metric Tons",
+        "Stock Value",
+        "Tons Sold",
+    ]
     rows = [
-        [r["customer_name"], r["total_qty"], float(r["total_tons_sold"])]
+        [
+            r["customer_name"],
+            r["branch_count"],
+            r["total_qty"],
+            float(r["tons"]),
+            float(r["stock_value"]),
+            float(r["total_tons_sold"]),
+        ]
         for r in data
     ]
     return _export(request, headers, rows, "Customer Stock")

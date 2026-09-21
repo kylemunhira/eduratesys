@@ -103,6 +103,55 @@ DispatchItemFormSet = inlineformset_factory(
 )
 
 
+class DispatchUploadForm(forms.Form):
+    """Sales Admin: choose destination branch and upload an Excel product list."""
+
+    customer = forms.ModelChoiceField(queryset=Customer.objects.none())
+    branch = forms.ModelChoiceField(queryset=Branch.objects.none())
+    notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 2}),
+    )
+    excel_file = forms.FileField(
+        label="Excel file",
+        help_text="Columns: Product Code (or SKU/Barcode) and Quantity. Optional Product Name.",
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        from accounts.roles import accessible_branches
+
+        allowed = accessible_branches(user) if user else Branch.objects.select_related(
+            "customer"
+        )
+        self.fields["branch"].queryset = allowed
+        customer_ids = allowed.values_list("customer_id", flat=True).distinct()
+        self.fields["customer"].queryset = Customer.objects.filter(pk__in=customer_ids)
+        if "customer" in self.data:
+            try:
+                customer_id = int(self.data.get("customer"))
+                self.fields["branch"].queryset = allowed.filter(customer_id=customer_id)
+            except (TypeError, ValueError):
+                pass
+
+    def clean_excel_file(self):
+        f = self.cleaned_data["excel_file"]
+        name = (f.name or "").lower()
+        if not name.endswith((".xlsx", ".xlsm", ".xls")):
+            raise forms.ValidationError("Upload an Excel file (.xlsx).")
+        if f.size and f.size > 5 * 1024 * 1024:
+            raise forms.ValidationError("File is too large (max 5 MB).")
+        return f
+
+    def clean(self):
+        cleaned = super().clean()
+        customer = cleaned.get("customer")
+        branch = cleaned.get("branch")
+        if customer and branch and branch.customer_id != customer.pk:
+            self.add_error("branch", "Branch must belong to the selected customer.")
+        return cleaned
+
+
 class StockLossForm(forms.ModelForm):
     class Meta:
         model = StockLoss

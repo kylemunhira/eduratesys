@@ -2,7 +2,13 @@
 {% load crispy_forms_tags %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
-<div class="topbar"><h1 class="page-title">{{ title }}</h1></div>
+<div class="topbar">
+  <div>
+    <p class="page-kicker">Dispatches</p>
+    <h1 class="page-title">{{ title }}</h1>
+    <p class="page-lead">Save as draft, review on the detail page, then send to GIT.</p>
+  </div>
+</div>
 <div class="card-panel" style="max-width:800px">
   <form method="post">
     {% csrf_token %}
@@ -24,7 +30,11 @@
     <button type="button" class="btn btn-sm btn-outline-dark mb-3" id="add-item">+ Add item</button>
     <br>
     <button class="btn btn-dark" type="submit">Save draft</button>
-    <a class="btn btn-link" href="{% url 'dispatch_list' %}">Cancel</a>
+    {% if dispatch %}
+      <a class="btn btn-link" href="{% url 'dispatch_detail' dispatch.pk %}">Cancel</a>
+    {% else %}
+      <a class="btn btn-link" href="{% url 'dispatch_list' %}">Cancel</a>
+    {% endif %}
   </form>
 </div>
 {% endblock %}

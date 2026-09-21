@@ -15,13 +15,19 @@ class DispatchAdmin(admin.ModelAdmin):
         "customer",
         "branch",
         "status",
+        "dispatched_at",
         "approved_at",
         "created_at",
     )
     list_filter = ("status", "customer")
     search_fields = ("reference",)
     inlines = [DispatchItemInline]
-    readonly_fields = ("approved_at", "approved_by")
+    readonly_fields = (
+        "dispatched_at",
+        "dispatched_by",
+        "approved_at",
+        "approved_by",
+    )
 
 
 @admin.register(BranchStock)

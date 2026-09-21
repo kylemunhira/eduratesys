@@ -4,7 +4,8 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum
-from django.shortcuts import render
+from django.http import Http404
+from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 
 from catalog.models import Branch, Customer, Product
@@ -219,15 +220,193 @@ def sales_report_data(request):
     )
 
 
+def _qty_bucket(qs, branch_field, product_field="product_id"):
+    return {
+        (row[branch_field], row[product_field]): row["total"] or 0
+        for row in qs.values(branch_field, product_field).annotate(total=Sum("quantity"))
+    }
+
+
+def closing_stock_quantities(user, end_dt, *, branch_id=None):
+    """
+    Closing on-hand quantity keyed by (branch_id, product_id) as of end_dt.
+
+    Closing = current BranchStock − dispatches after + sales after + losses after.
+    """
+    stock_qs = filter_by_accessible_branches(BranchStock.objects.all(), user)
+    dispatch_qs = filter_by_accessible_branches(
+        DispatchItem.objects.filter(
+            dispatch__status=Dispatch.Status.APPROVED,
+            dispatch__approved_at__isnull=False,
+            dispatch__approved_at__gte=end_dt,
+        ),
+        user,
+        field="dispatch__branch_id",
+    )
+    sale_qs = filter_by_accessible_branches(
+        SaleItem.objects.filter(sale__sold_at__gte=end_dt),
+        user,
+        field="sale__branch_id",
+    )
+    loss_qs = filter_by_accessible_branches(
+        StockLoss.objects.filter(recorded_at__gte=end_dt),
+        user,
+    )
+
+    if branch_id is not None:
+        bid = int(branch_id)
+        if not user_can_access_branch(user, bid):
+            return {}
+        stock_qs = stock_qs.filter(branch_id=bid)
+        dispatch_qs = dispatch_qs.filter(dispatch__branch_id=bid)
+        sale_qs = sale_qs.filter(sale__branch_id=bid)
+        loss_qs = loss_qs.filter(branch_id=bid)
+
+    stock_now = _qty_bucket(stock_qs, "branch_id")
+    dispatched_after = _qty_bucket(dispatch_qs, "dispatch__branch_id")
+    sold_after = _qty_bucket(sale_qs, "sale__branch_id")
+    loss_after = _qty_bucket(loss_qs, "branch_id")
+
+    closing = {}
+    for key in set(stock_now) | set(dispatched_after) | set(sold_after) | set(loss_after):
+        qty = (
+            stock_now.get(key, 0)
+            - dispatched_after.get(key, 0)
+            + sold_after.get(key, 0)
+            + loss_after.get(key, 0)
+        )
+        if qty != 0:
+            closing[key] = qty
+    return closing
+
+
+def stock_balance_data(request):
+    """
+    Closing stock with metric tons and stock value (selling_price × qty) as of date_to.
+
+    Optional ?branch= filters to one accessible branch (also applied on export).
+    Returns per branch×SKU lines, by-SKU totals, by-branch totals, and grand totals.
+    """
+    bounds = parse_period_bounds(request)
+    branch_id = request.GET.get("branch") or ""
+    bid = int(branch_id) if branch_id.isdigit() else None
+    closing = closing_stock_quantities(request.user, bounds["end_dt"], branch_id=bid)
+
+    product_ids = {pid for _, pid in closing}
+    branch_ids = {bid_ for bid_, _ in closing}
+    products = {p.pk: p for p in Product.objects.filter(pk__in=product_ids)}
+    branches = {
+        b.pk: b
+        for b in Branch.objects.select_related("customer").filter(pk__in=branch_ids)
+    }
+
+    money = Decimal("0.01")
+    lines = []
+    for (bid_key, pid), qty in closing.items():
+        product = products.get(pid)
+        branch = branches.get(bid_key)
+        if not product or not branch:
+            continue
+        unit_price = Decimal(product.selling_price or 0)
+        stock_value = (Decimal(qty) * unit_price).quantize(
+            money, rounding=ROUND_HALF_UP
+        )
+        tons = _tons(qty, pack_size_kg(product.name))
+        lines.append(
+            {
+                "customer_name": branch.customer.name,
+                "branch_id": branch.pk,
+                "branch_name": branch.name,
+                "branch_label": f"{branch.customer.name} / {branch.name}",
+                "product_code": product.code,
+                "product_name": product.name,
+                "quantity": qty,
+                "tons": tons,
+                "unit_price": unit_price,
+                "stock_value": stock_value,
+            }
+        )
+
+    lines.sort(
+        key=lambda r: (
+            r["customer_name"].lower(),
+            r["branch_name"].lower(),
+            r["product_code"] or "",
+            r["product_name"].lower(),
+        )
+    )
+
+    by_sku_map = defaultdict(
+        lambda: {"quantity": 0, "tons": Decimal("0"), "stock_value": Decimal("0")}
+    )
+    by_branch_map = defaultdict(
+        lambda: {"quantity": 0, "tons": Decimal("0"), "stock_value": Decimal("0")}
+    )
+    for row in lines:
+        sku = by_sku_map[row["product_name"]]
+        sku["quantity"] += row["quantity"]
+        if row["tons"] is not None:
+            sku["tons"] += row["tons"]
+        sku["stock_value"] += row["stock_value"]
+        br = by_branch_map[row["branch_label"]]
+        br["quantity"] += row["quantity"]
+        if row["tons"] is not None:
+            br["tons"] += row["tons"]
+        br["stock_value"] += row["stock_value"]
+
+    by_sku = [
+        {
+            "label": name,
+            "quantity": vals["quantity"],
+            "tons": _quantize_tons(vals["tons"]),
+            "stock_value": vals["stock_value"].quantize(money, rounding=ROUND_HALF_UP),
+        }
+        for name, vals in sorted(by_sku_map.items(), key=lambda x: x[0].lower())
+    ]
+    by_branch = [
+        {
+            "label": name,
+            "quantity": vals["quantity"],
+            "tons": _quantize_tons(vals["tons"]),
+            "stock_value": vals["stock_value"].quantize(money, rounding=ROUND_HALF_UP),
+        }
+        for name, vals in sorted(by_branch_map.items(), key=lambda x: x[0].lower())
+    ]
+    total_tons = _quantize_tons(
+        sum((r["tons"] or Decimal("0") for r in lines), Decimal("0"))
+    )
+    totals = {
+        "quantity": sum(r["quantity"] for r in lines),
+        "tons": total_tons,
+        "stock_value": sum((r["stock_value"] for r in lines), Decimal("0")).quantize(
+            money, rounding=ROUND_HALF_UP
+        ),
+    }
+    return bounds, lines, by_sku, by_branch, totals
+
+
 @login_required
 def stock_balance(request):
-    stocks = filter_by_accessible_branches(
-        BranchStock.objects.select_related(
-            "branch", "branch__customer", "product"
-        ),
-        request.user,
+    bounds, lines, by_sku, by_branch, totals = stock_balance_data(request)
+    view = (request.GET.get("view") or "detail").lower()
+    if view not in ("detail", "sku", "branch"):
+        view = "detail"
+    branch_id = request.GET.get("branch") or ""
+    return render(
+        request,
+        "reports/stock_balance.html",
+        {
+            "view": view,
+            "lines": lines,
+            "by_sku": by_sku,
+            "by_branch": by_branch,
+            "totals": totals,
+            "branches": accessible_branches(request.user),
+            "selected_branch": branch_id,
+            "date_to_display": bounds["date_to"],
+            **_period_context(bounds),
+        },
     )
-    return render(request, "reports/stock_balance.html", {"stocks": stocks})
 
 
 @login_required
@@ -282,23 +461,86 @@ def sales_report(request):
     )
 
 
-def customer_stock_summary_data(user=None):
-    """Current stock units and all-time sold tonnage per customer."""
-    stock_qs = BranchStock.objects.all()
-    sale_qs = SaleItem.objects.all()
+def _customer_stock_lines(user, customer_id=None):
+    """
+    Current BranchStock lines with metric tons and stock value.
+
+    Optional customer_id filters to one customer. Respects branch access.
+    """
+    money = Decimal("0.01")
+    stock_qs = BranchStock.objects.select_related(
+        "branch", "branch__customer", "product"
+    )
     if user is not None:
         stock_qs = filter_by_accessible_branches(stock_qs, user)
+    if customer_id is not None:
+        stock_qs = stock_qs.filter(branch__customer_id=customer_id)
+
+    lines = []
+    for row in stock_qs:
+        qty = row.quantity
+        unit_price = Decimal(row.product.selling_price or 0)
+        stock_value = (Decimal(qty) * unit_price).quantize(
+            money, rounding=ROUND_HALF_UP
+        )
+        tons = _tons(qty, pack_size_kg(row.product.name))
+        lines.append(
+            {
+                "customer_id": row.branch.customer_id,
+                "customer_name": row.branch.customer.name,
+                "branch_id": row.branch_id,
+                "branch_name": row.branch.name,
+                "product_code": row.product.code,
+                "product_name": row.product.name,
+                "quantity": qty,
+                "tons": tons,
+                "unit_price": unit_price,
+                "stock_value": stock_value,
+                "updated_at": row.updated_at,
+            }
+        )
+    lines.sort(
+        key=lambda r: (
+            r["customer_name"].lower(),
+            r["branch_name"].lower(),
+            r["product_code"] or "",
+            r["product_name"].lower(),
+        )
+    )
+    return lines
+
+
+def customer_stock_summary_data(user=None):
+    """Current stock units, metric tons, stock value, and all-time sold tonnage per customer."""
+    money = Decimal("0.01")
+    lines = _customer_stock_lines(user)
+
+    by_customer = defaultdict(
+        lambda: {
+            "customer_name": "",
+            "customer_id": None,
+            "total_qty": 0,
+            "tons": Decimal("0"),
+            "stock_value": Decimal("0"),
+            "branch_count": set(),
+        }
+    )
+    for row in lines:
+        cid = row["customer_id"]
+        bucket = by_customer[cid]
+        bucket["customer_id"] = cid
+        bucket["customer_name"] = row["customer_name"]
+        bucket["total_qty"] += row["quantity"]
+        bucket["stock_value"] += row["stock_value"]
+        if row["tons"] is not None:
+            bucket["tons"] += row["tons"]
+        bucket["branch_count"].add(row["branch_id"])
+
+    sale_qs = SaleItem.objects.all()
+    if user is not None:
         sale_qs = filter_by_accessible_branches(
             sale_qs, user, field="sale__branch_id"
         )
-    stock_rows = list(
-        stock_qs.values(
-            "branch__customer__name", "branch__customer_id"
-        )
-        .annotate(total_qty=Sum("quantity"))
-        .order_by("branch__customer__name")
-    )
-
     sold_by_customer = defaultdict(lambda: Decimal("0"))
     sale_aggs = sale_qs.values(
         "sale__branch__customer_id",
@@ -309,25 +551,133 @@ def customer_stock_summary_data(user=None):
         if tons is not None:
             sold_by_customer[row["sale__branch__customer_id"]] += tons
 
-    return [
+    rows = []
+    for cid, vals in by_customer.items():
+        rows.append(
+            {
+                "customer_name": vals["customer_name"],
+                "customer_id": vals["customer_id"],
+                "total_qty": vals["total_qty"],
+                "tons": _quantize_tons(vals["tons"]),
+                "stock_value": vals["stock_value"].quantize(
+                    money, rounding=ROUND_HALF_UP
+                ),
+                "branch_count": len(vals["branch_count"]),
+                "total_tons_sold": _quantize_tons(
+                    sold_by_customer.get(cid, Decimal("0"))
+                ),
+            }
+        )
+    rows.sort(key=lambda r: r["customer_name"].lower())
+    return rows
+
+
+def customer_stock_detail_data(user, customer):
+    """
+    Branch and product stock breakdown for one customer.
+
+    Returns None if the user has no accessible stock for this customer.
+    """
+    money = Decimal("0.01")
+    lines = _customer_stock_lines(user, customer_id=customer.pk)
+    if not lines:
+        # Still allow detail if user can see at least one of the customer's branches.
+        branches = accessible_branches(user).filter(customer=customer)
+        if not branches.exists():
+            return None
+        return {
+            "customer": customer,
+            "lines": [],
+            "by_branch": [],
+            "totals": {
+                "quantity": 0,
+                "tons": Decimal("0"),
+                "stock_value": Decimal("0"),
+                "branch_count": branches.count(),
+            },
+        }
+
+    by_branch_map = defaultdict(
+        lambda: {
+            "branch_name": "",
+            "branch_id": None,
+            "quantity": 0,
+            "tons": Decimal("0"),
+            "stock_value": Decimal("0"),
+        }
+    )
+    for row in lines:
+        br = by_branch_map[row["branch_id"]]
+        br["branch_id"] = row["branch_id"]
+        br["branch_name"] = row["branch_name"]
+        br["quantity"] += row["quantity"]
+        br["stock_value"] += row["stock_value"]
+        if row["tons"] is not None:
+            br["tons"] += row["tons"]
+
+    by_branch = [
         {
-            "customer_name": r["branch__customer__name"],
-            "customer_id": r["branch__customer_id"],
-            "total_qty": r["total_qty"],
-            "total_tons_sold": _quantize_tons(
-                sold_by_customer.get(r["branch__customer_id"], Decimal("0"))
+            "branch_id": vals["branch_id"],
+            "branch_name": vals["branch_name"],
+            "quantity": vals["quantity"],
+            "tons": _quantize_tons(vals["tons"]),
+            "stock_value": vals["stock_value"].quantize(
+                money, rounding=ROUND_HALF_UP
             ),
         }
-        for r in stock_rows
+        for vals in sorted(
+            by_branch_map.values(), key=lambda v: v["branch_name"].lower()
+        )
     ]
+    totals = {
+        "quantity": sum(r["quantity"] for r in lines),
+        "tons": _quantize_tons(
+            sum((r["tons"] or Decimal("0") for r in lines), Decimal("0"))
+        ),
+        "stock_value": sum((r["stock_value"] for r in lines), Decimal("0")).quantize(
+            money, rounding=ROUND_HALF_UP
+        ),
+        "branch_count": len(by_branch),
+    }
+    return {
+        "customer": customer,
+        "lines": lines,
+        "by_branch": by_branch,
+        "totals": totals,
+    }
 
 
 @login_required
 def customer_stock_summary(request):
+    rows = customer_stock_summary_data(request.user)
+    money = Decimal("0.01")
+    totals = {
+        "quantity": sum(r["total_qty"] for r in rows),
+        "tons": _quantize_tons(
+            sum((r["tons"] for r in rows), Decimal("0"))
+        ),
+        "stock_value": sum((r["stock_value"] for r in rows), Decimal("0")).quantize(
+            money, rounding=ROUND_HALF_UP
+        ),
+        "customers": len(rows),
+    }
     return render(
         request,
         "reports/customer_stock.html",
-        {"rows": customer_stock_summary_data(request.user)},
+        {"rows": rows, "totals": totals},
+    )
+
+
+@login_required
+def customer_stock_detail(request, customer_id):
+    customer = get_object_or_404(Customer, pk=customer_id)
+    data = customer_stock_detail_data(request.user, customer)
+    if data is None:
+        raise Http404("Customer stock not found.")
+    return render(
+        request,
+        "reports/customer_stock_detail.html",
+        data,
     )
 
 
@@ -566,7 +916,7 @@ def stock_movement(request):
 
 def dispatch_warehouse_data(request):
     """
-    Approved dispatch quantities for all branches, grouped by product category.
+    Received (stockist-confirmed) dispatch quantities, grouped by product category.
     Returns (bounds, groups, grand_total).
     """
     bounds = parse_period_bounds(request)

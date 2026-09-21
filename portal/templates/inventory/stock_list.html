@@ -5,11 +5,14 @@
   <div>
     <p class="page-kicker">Inventory</p>
     <h1 class="page-title">Branch stock</h1>
+    <p class="page-lead">Closing stock as of the selected date, with metric tons and stock value.</p>
   </div>
 </div>
 <div class="card-panel">
-  <form method="get" class="row g-2 mb-3">
+  <form method="get" class="row g-2 align-items-end mb-3">
+    {% include "includes/period_fields.html" %}
     <div class="col-auto">
+      <label class="form-label form-label-sm mb-0">Branch</label>
       <select name="branch" class="form-select form-select-sm">
         <option value="">All branches</option>
         {% for b in branches %}
@@ -19,19 +22,34 @@
     </div>
     <div class="col-auto"><button class="btn btn-sm btn-outline-dark" type="submit">Filter</button></div>
   </form>
+  <p class="small text-muted mb-2">
+    Closing as of <strong>{{ date_to_display|date:"j/n/Y" }}</strong>
+  </p>
   <table class="table table-hover mb-0">
-    <thead><tr><th>Customer</th><th>Branch</th><th>Product</th><th>Qty</th><th>Updated</th></tr></thead>
+    <thead>
+      <tr>
+        <th>Customer</th>
+        <th>Branch</th>
+        <th>Product</th>
+        <th class="text-end">Qty</th>
+        <th class="text-end">Metric Tons</th>
+        <th class="text-end">Stock Value</th>
+        <th>Updated</th>
+      </tr>
+    </thead>
     <tbody>
     {% for s in stocks %}
       <tr>
-        <td>{{ s.branch.customer.name }}</td>
-        <td>{{ s.branch.name }}</td>
-        <td>{{ s.product.code }} — {{ s.product.name }}</td>
-        <td>{{ s.quantity }}</td>
-        <td class="small">{{ s.updated_at }}</td>
+        <td>{{ s.customer_name }}</td>
+        <td>{{ s.branch_name }}</td>
+        <td>{{ s.product_code }} — {{ s.product_name }}</td>
+        <td class="text-end">{{ s.quantity }}</td>
+        <td class="text-end">{% if s.tons is not None %}{{ s.tons }}{% else %}—{% endif %}</td>
+        <td class="text-end">{{ s.stock_value }}</td>
+        <td class="small">{% if s.updated_at %}{{ s.updated_at }}{% else %}—{% endif %}</td>
       </tr>
     {% empty %}
-      <tr><td colspan="5" class="text-muted">No stock rows.</td></tr>
+      <tr><td colspan="7" class="text-muted">No stock as of this closing date.</td></tr>
     {% endfor %}
     </tbody>
   </table>

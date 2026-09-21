@@ -12,8 +12,9 @@
   <form method="post">{% csrf_token %}
     {{ form|crispy }}
     <p class="form-text text-muted mb-3">
-      Sales Admin and Sales only see the branches you assign.
+      Sales Admin, Sales, and Stockist only see the branches you assign.
       IT, Business Head, and Commercial Manager see all branches.
+      Stockists confirm receipt of GIT dispatches for their branch.
     </p>
     <button class="btn btn-dark" type="submit">Save</button>
     <a class="btn btn-link" href="{% url 'user_list' %}">Cancel</a>

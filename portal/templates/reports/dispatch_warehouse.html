@@ -5,7 +5,7 @@
   <div>
     <p class="page-kicker">Reports</p>
     <h1 class="page-title">Dispatch warehouse</h1>
-    <p class="page-lead">Approved dispatches across all branches, grouped by product category.</p>
+    <p class="page-lead">Received (stockist-confirmed) dispatches across branches, grouped by product category.</p>
   </div>
 </div>
 <div class="card-panel">
@@ -18,7 +18,7 @@
 
   {% include "includes/report_actions.html" with export_url="export_dispatch_warehouse" %}
   <p class="small text-muted mb-3">
-    Includes approved dispatches only · Period: {{ period_label }} · Grand total: <strong>{{ grand_total }}</strong> units
+    Includes received dispatches only · Period: {{ period_label }} · Grand total: <strong>{{ grand_total }}</strong> units
   </p>
 
   {% for group in groups %}
@@ -59,7 +59,7 @@
     </div>
   </div>
   {% empty %}
-  <p class="text-muted mb-0">No approved dispatches for this period.</p>
+  <p class="text-muted mb-0">No received dispatches for this period.</p>
   {% endfor %}
 
   {% if groups %}

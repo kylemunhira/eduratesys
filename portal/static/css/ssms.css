@@ -207,18 +207,6 @@ a:hover {
   color: rgba(255, 255, 255, 0.62);
 }
 
-.topbar .btn-dark {
-  background: rgba(201, 162, 39, 0.2);
-  border-color: rgba(201, 162, 39, 0.55);
-  color: #ffffff;
-}
-
-.topbar .btn-dark:hover {
-  background: rgba(201, 162, 39, 0.35);
-  border-color: var(--accent);
-  color: #ffffff;
-}
-
 .page-kicker {
   margin: 0 0 0.2rem;
   color: var(--muted);
@@ -780,4 +768,31 @@ a.stat:focus {
     margin: -1.1rem -1rem 1.35rem;
     padding: 1.1rem 1rem 1rem;
   }
+}
+
+/* Topbar actions — must follow general .btn-dark rules so gold text wins */
+.topbar .btn.topbar-btn,
+.topbar a.btn.topbar-btn,
+.topbar .btn-dark.topbar-btn,
+.topbar .btn-outline-dark.topbar-btn {
+  --bs-btn-color: #c9a227;
+  --bs-btn-hover-color: #c9a227;
+  --bs-btn-active-color: #c9a227;
+  --bs-btn-border-color: rgba(201, 162, 39, 0.55);
+  --bs-btn-hover-border-color: #c9a227;
+  --bs-btn-bg: rgba(201, 162, 39, 0.18);
+  --bs-btn-hover-bg: rgba(201, 162, 39, 0.32);
+  background: rgba(201, 162, 39, 0.18) !important;
+  border-color: rgba(201, 162, 39, 0.55) !important;
+  color: #c9a227 !important;
+  font-weight: 700 !important;
+}
+
+.topbar .btn.topbar-btn:hover,
+.topbar a.btn.topbar-btn:hover,
+.topbar .btn-dark.topbar-btn:hover,
+.topbar .btn-outline-dark.topbar-btn:hover {
+  background: rgba(201, 162, 39, 0.32) !important;
+  border-color: #c9a227 !important;
+  color: #c9a227 !important;
 }

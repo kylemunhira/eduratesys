@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Preview dispatch upload{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <p class="page-kicker">Dispatches</p>
+    <h1 class="page-title">Preview upload</h1>
+    <p class="page-lead">
+      Confirm matched products for <strong>{{ customer.name }} / {{ branch.name }}</strong>,
+      adjust quantities if needed, then create the draft.
+    </p>
+  </div>
+</div>
+<div class="card-panel">
+  {% if notes %}
+  <p class="mb-3"><strong>Notes:</strong> {{ notes }}</p>
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+    <h2 class="h6">Matched products ({{ matched|length }})</h2>
+    <div class="table-responsive mb-3">
+      <table class="table table-sm table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Product</th>
+            <th style="width:140px" class="text-end">Qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in matched %}
+          <tr>
+            <td class="mono">{{ line.code }}</td>
+            <td>{{ line.name }}</td>
+            <td class="text-end">
+              <input
+                class="form-control form-control-sm text-end"
+                type="number"
+                min="1"
+                name="qty_{{ line.product_id }}"
+                value="{{ line.quantity }}"
+              >
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="3" class="text-muted">No matched products.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if errors %}
+    <h2 class="h6 text-danger">Skipped / unmatched ({{ errors|length }})</h2>
+    <table class="table table-sm mb-3">
+      <thead><tr><th>Code</th><th>Name</th><th>Qty</th><th>Issue</th></tr></thead>
+      <tbody>
+        {% for line in errors %}
+        <tr>
+          <td class="mono">{{ line.code }}</td>
+          <td>{{ line.name|default:"—" }}</td>
+          <td>{{ line.quantity }}</td>
+          <td class="text-danger">{{ line.error }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <button class="btn btn-dark" type="submit" name="action" value="create">Create draft</button>
+    <button class="btn btn-outline-secondary" type="submit" name="action" value="cancel">Cancel</button>
+  </form>
+</div>
+{% endblock %}

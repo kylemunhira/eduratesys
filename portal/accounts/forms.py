@@ -4,9 +4,9 @@ from django.contrib.auth.models import User
 from accounts.models import UserProfile
 from accounts.roles import (
     ALL_BRANCHES_ROLES,
+    BRANCH_SCOPED_ROLES,
     ROLE_CHOICES,
     ROLE_SALES,
-    ROLE_SALES_ADMIN,
     SYSTEM_ADMIN_USERNAME,
     is_reserved_username,
 )
@@ -22,7 +22,7 @@ class UserCreateForm(forms.ModelForm):
         required=False,
         label="Customer",
         widget=forms.CheckboxSelectMultiple,
-        help_text="Assign branches for Sales Admin and Sales users.",
+        help_text="Assign branches for Sales Admin, Sales, and Stockist users.",
     )
 
     class Meta:
@@ -48,10 +48,10 @@ class UserCreateForm(forms.ModelForm):
         cleaned = super().clean()
         role = cleaned.get("role")
         branches = cleaned.get("branches")
-        if role in (ROLE_SALES_ADMIN, ROLE_SALES) and not branches:
+        if role in BRANCH_SCOPED_ROLES and not branches:
             self.add_error(
                 "branches",
-                "Sales Admin and Sales users must be assigned at least one branch.",
+                "Sales Admin, Sales, and Stockist users must be assigned at least one branch.",
             )
         return cleaned
 
@@ -88,7 +88,7 @@ class UserEditForm(forms.ModelForm):
         required=False,
         label="Customer",
         widget=forms.CheckboxSelectMultiple,
-        help_text="Assign branches for Sales Admin and Sales users.",
+        help_text="Assign branches for Sales Admin, Sales, and Stockist users.",
     )
     is_active = forms.BooleanField(required=False, initial=True)
 
@@ -126,10 +126,10 @@ class UserEditForm(forms.ModelForm):
         cleaned = super().clean()
         role = cleaned.get("role")
         branches = cleaned.get("branches")
-        if role in (ROLE_SALES_ADMIN, ROLE_SALES) and not branches:
+        if role in BRANCH_SCOPED_ROLES and not branches:
             self.add_error(
                 "branches",
-                "Sales Admin and Sales users must be assigned at least one branch.",
+                "Sales Admin, Sales, and Stockist users must be assigned at least one branch.",
             )
         return cleaned
 
